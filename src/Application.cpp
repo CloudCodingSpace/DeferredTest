@@ -33,7 +33,7 @@ Application::Application() : m_Width{800}, m_Height{600}
         VkApplicationInfo appInfo = {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pApplicationName = "Application",
-            .applicationVersion = VK_MAKE_VERSION(2, 0, 0),
+            .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
             .pEngineName = "Application",
             .engineVersion = VK_MAKE_VERSION(1, 0, 0),
             .apiVersion = VK_API_VERSION_1_0
