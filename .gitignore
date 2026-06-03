@@ -1,0 +1,7 @@
+.vs
+out
+build
+compile_commands.json
+.cache
+bin
+vkconfig.txt
