@@ -24,6 +24,42 @@ endif()
 
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets" DESTINATION "${CMAKE_BINARY_DIR}")
 
+# Compiling shaders
+find_program(GLSLC_EXECUTABLE glslc REQUIRED)
+
+if(NOT GLSLC_EXECUTABLE)
+    message(FATAL_ERROR "GLSLC not found! Make sure to download the vulkan sdk and set the VULKAN_SDK environment variable!")
+endif()
+
+function(CompileShader shader output_dir OUT_LIST)
+    get_filename_component(FILE_NAME ${shader} NAME)
+    set(SPIRV_NAME "${output_dir}/${FILE_NAME}.spv")
+
+    add_custom_command(
+        OUTPUT ${SPIRV_NAME}
+        COMMAND ${GLSLC_EXECUTABLE} ${flags} ${shader} -o ${SPIRV_NAME}
+        DEPENDS ${shader}
+        BYPRODUCTS ${SPIRV_NAME}
+        VERBATIM
+    )
+
+    set(${OUT_LIST} ${${OUT_LIST}} ${SPIRV_NAME} PARENT_SCOPE)
+endfunction()
+
+file(GLOB_RECURSE VERT_SRCS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.vert")
+file(GLOB_RECURSE FRAG_SRCS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.frag")
+
+set(SPIRV_SHADERS "")
+foreach(SHADER ${VERT_SRCS})
+    CompileShader(${SHADER} ${CMAKE_BINARY_DIR}/assets/shaders SPIRV_SHADERS)
+endforeach()
+
+foreach(SHADER ${FRAG_SRCS})
+    CompileShader(${SHADER} ${CMAKE_BINARY_DIR}/assets/shaders SPIRV_SHADERS)
+endforeach()
+
+add_custom_target(Shaders ALL DEPENDS ${SPIRV_SHADERS})
+
 add_subdirectory(libs/imgui)
 add_subdirectory(libs/glfw)
 add_subdirectory(libs/stb)
