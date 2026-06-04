@@ -33,8 +33,33 @@ public:
     void Run();
 
 private:
+    struct Pipeline {
+        VkPipeline pipeline;
+        VkPipelineLayout layout;
+    };
+
+    struct PipelineInfo {
+        const char* vertPath;
+        const char* fragPath;
+        u32 setLayCount;
+        VkDescriptorSetLayout* setLays;
+        u32 binding;
+        VkVertexInputBindingDescription* bindings;
+        u32 attribCount;
+        VkVertexInputAttributeDescription* attribs;
+        u32 subpassIndex;
+        VkRenderPass renderPass;
+    };
+
+private:
     bool StartFrame();
     void EndFrame();
+
+    VkCommandBuffer CreateCommandBuffer();
+    void DestroyCommandBuffer(VkCommandBuffer buffer);
+    void BeginCommandBuffer(VkCommandBuffer buffer, VkCommandBufferUsageFlags flags);
+
+    void CreatePipeline(Pipeline& pipeline, const PipelineInfo& info);
 
     ScCaps GetScCaps();
     void CreateSwapchain();
@@ -64,9 +89,11 @@ private:
     VkFence m_InFlightFences[FRAMES_IN_FLIGHT];
     VkSemaphore m_ImageAvailable[FRAMES_IN_FLIGHT];
     std::vector<VkSemaphore> m_RenderFinished;
-
     VkDescriptorPool m_UiDescPool = nullptr;
+
+    Pipeline m_Pipeline;
     
     u32 m_ImageIdx = 0;
     u32 m_FrameIdx = 0;
+    double m_DeltaTime = 0.0, m_LastTime = 0.0;
 };

@@ -215,18 +215,8 @@ Application::Application() : m_Width{800}, m_Height{600}
             
             VK_CHECK(vkCreateCommandPool(m_Device, &info, nullptr, &m_CmdPool));
         }
-        {
-            for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) 
-            {
-                VkCommandBufferAllocateInfo info{};
-                info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-                info.commandBufferCount = 1;
-                info.commandPool = m_CmdPool;
-                info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-                
-                VK_CHECK(vkAllocateCommandBuffers(m_Device, &info, &m_CmdBuffs[i]));
-            }
-        }
+        for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++)
+            m_CmdBuffs[i] = CreateCommandBuffer();
     }
     // Sync objs
     {
@@ -341,13 +331,37 @@ void Application::Run()
     glfwShowWindow(m_Window);
     while(!glfwWindowShouldClose(m_Window))
     {
+        // Delta time
+        {
+            double crntTime = glfwGetTime();
+            m_DeltaTime = crntTime - m_LastTime;
+            m_LastTime = crntTime;
+        }
+
         glfwGetFramebufferSize(m_Window, &m_Width, &m_Height);
         if(!StartFrame())
             continue;
         
         // Draw commands
         {
-            ImGui::ShowDemoWindow();
+            ImGuiWindowFlags flags =
+                ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoBringToFrontOnFocus |
+                ImGuiWindowFlags_NoNavFocus |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoMove;
+            ImGui::Begin("Main scene", nullptr, flags);
+            
+            // Show the image here
+
+            ImGui::End();
+        
+            ImGui::Begin("Settings");
+            ImGui::TextColored(ImVec4(0, 255, 0, 244), "Delta Time: %.3fms", m_DeltaTime * 1000);
+            ImGui::TextColored(ImVec4(0, 255, 0, 244), "FPS: %.1f Hz", 1/m_DeltaTime);
+            ImGui::End();
         }
         
         EndFrame();
@@ -377,11 +391,7 @@ bool Application::StartFrame()
     
     VK_CHECK(vkResetFences(m_Device, 1, &m_InFlightFences[m_FrameIdx]));
     VK_CHECK(vkResetCommandBuffer(m_CmdBuffs[m_FrameIdx], 0));
-    {
-        VkCommandBufferBeginInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        VK_CHECK(vkBeginCommandBuffer(m_CmdBuffs[m_FrameIdx], &info));
-    }
+    BeginCommandBuffer(m_CmdBuffs[m_FrameIdx], VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VkClearValue clearColor = {};
     clearColor.color = {0.1f, 0.1f, 0.1f, 1.0f};
@@ -401,7 +411,36 @@ bool Application::StartFrame()
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-    ImGui::DockSpaceOverViewport(ImGui::GetID("Dockspace"), ImGui::GetMainViewport());
+    // Dockspace
+    // ImGui::DockSpaceOverViewport(ImGui::GetID("Dockspace"), ImGui::GetMainViewport());
+    ImGuiWindowFlags window_flags =
+        ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoNavFocus;
+
+    ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
+
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    ImGui::SetNextWindowViewport(viewport->ID);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
+    ImGui::Begin("DockSpaceWindow", nullptr, window_flags);
+    ImGui::DockSpace(ImGui::GetID("MainDockSpace"), ImVec2(0.0f, 0.0f), dockspace_flags);    
+    ImGui::End();
+
+    ImGui::PopStyleVar(2);
+    
+    ImGui::SetNextWindowDockID(ImGui::GetID("MainDockSpace"), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
 
     return true;
 }
@@ -449,6 +488,38 @@ void Application::EndFrame()
     }
 
     m_FrameIdx = (m_FrameIdx + 1) % FRAMES_IN_FLIGHT;
+}
+
+void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& info)
+{
+
+}
+
+VkCommandBuffer Application::CreateCommandBuffer()
+{
+    VkCommandBufferAllocateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    info.commandBufferCount = 1;
+    info.commandPool = m_CmdPool;
+    info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    VkCommandBuffer buffer = nullptr;
+    VK_CHECK(vkAllocateCommandBuffers(m_Device, &info, &buffer));
+    return buffer;
+}
+
+void Application::DestroyCommandBuffer(VkCommandBuffer buffer)
+{
+    vkFreeCommandBuffers(m_Device, m_CmdPool, 1, &buffer);
+}
+
+void Application::BeginCommandBuffer(VkCommandBuffer buffer, VkCommandBufferUsageFlags flags)
+{
+    VkCommandBufferBeginInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    info.flags = flags;
+    
+    VK_CHECK(vkBeginCommandBuffer(buffer, &info));
 }
 
 ScCaps Application::GetScCaps()
