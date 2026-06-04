@@ -43,7 +43,9 @@ private:
         const char* fragPath;
         u32 setLayCount;
         VkDescriptorSetLayout* setLays;
-        u32 binding;
+        u32 pushConstRangesCount;
+        VkPushConstantRange* pushConstRanges; 
+        u32 bindingCount;
         VkVertexInputBindingDescription* bindings;
         u32 attribCount;
         VkVertexInputAttributeDescription* attribs;
@@ -60,10 +62,12 @@ private:
     void BeginCommandBuffer(VkCommandBuffer buffer, VkCommandBufferUsageFlags flags);
 
     void CreatePipeline(Pipeline& pipeline, const PipelineInfo& info);
+    void DestroyPipeline(Pipeline& pipeline);
 
     ScCaps GetScCaps();
     void CreateSwapchain();
     void Resize();
+    u8* ReadFile(const char* path, u64* size, const char* mode);
 
 private:
     GLFWwindow* m_Window = nullptr;

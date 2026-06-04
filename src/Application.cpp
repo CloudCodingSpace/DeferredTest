@@ -290,6 +290,16 @@ Application::Application() : m_Width{800}, m_Height{600}
         ImGui_ImplVulkan_Init(&info);
         ImGui_ImplVulkan_CreateFontsTexture();
     }
+    // Pipeline
+    {
+        PipelineInfo info{};
+        info.renderPass = m_Pass;
+        info.subpassIndex = 0;
+        info.vertPath = "assets/shaders/main.vert.spv";
+        info.fragPath = "assets/shaders/main.frag.spv";
+        
+        CreatePipeline(m_Pipeline, info);
+    }
 }
 
 Application::~Application()
@@ -299,6 +309,8 @@ Application::~Application()
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+
+    DestroyPipeline(m_Pipeline);
 
     vkDestroyDescriptorPool(m_Device, m_UiDescPool, nullptr);
 
@@ -344,14 +356,34 @@ void Application::Run()
         
         // Draw commands
         {
-            ImGuiWindowFlags flags =
-                ImGuiWindowFlags_NoTitleBar |
-                ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoBringToFrontOnFocus |
-                ImGuiWindowFlags_NoNavFocus |
-                ImGuiWindowFlags_NoFocusOnAppearing |
-                ImGuiWindowFlags_NoMove;
+            VkViewport vp{};
+            vp.x = 0;
+            vp.y = 0;
+            vp.maxDepth = 1.0f;
+            vp.minDepth = 0.0f;
+            vp.width = m_ScCaps.extent.width;
+            vp.height = m_ScCaps.extent.height;
+            vkCmdSetViewport(m_CmdBuffs[m_FrameIdx], 0, 1, &vp);
+
+            VkRect2D scissor{};
+            scissor.extent = m_ScCaps.extent;
+            scissor.offset = { 0, 0 };
+            vkCmdSetScissor(m_CmdBuffs[m_FrameIdx], 0, 1, &scissor);
+        
+            vkCmdBindPipeline(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.pipeline);
+            vkCmdDraw(m_CmdBuffs[m_FrameIdx], 3, 1, 0, 0);
+        }
+
+        // ImGui
+        {
+            ImGuiWindowFlags flags = 0;
+                // ImGuiWindowFlags_NoTitleBar |
+                // ImGuiWindowFlags_NoCollapse |
+                // ImGuiWindowFlags_NoResize |
+                // ImGuiWindowFlags_NoBringToFrontOnFocus |
+                // ImGuiWindowFlags_NoNavFocus |
+                // ImGuiWindowFlags_NoFocusOnAppearing |
+                // ImGuiWindowFlags_NoMove;
             ImGui::Begin("Main scene", nullptr, flags);
             
             // Show the image here
@@ -413,34 +445,34 @@ bool Application::StartFrame()
 
     // Dockspace
     // ImGui::DockSpaceOverViewport(ImGui::GetID("Dockspace"), ImGui::GetMainViewport());
-    ImGuiWindowFlags window_flags =
-        ImGuiWindowFlags_NoTitleBar |
-        ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoBringToFrontOnFocus |
-        ImGuiWindowFlags_NoNavFocus;
+    // ImGuiWindowFlags window_flags =
+    //     ImGuiWindowFlags_NoTitleBar |
+    //     ImGuiWindowFlags_NoCollapse |
+    //     ImGuiWindowFlags_NoResize |
+    //     ImGuiWindowFlags_NoMove |
+    //     ImGuiWindowFlags_NoBringToFrontOnFocus |
+    //     ImGuiWindowFlags_NoNavFocus;
 
-    ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
+    // ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
 
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    // const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(viewport->WorkSize);
-    ImGui::SetNextWindowViewport(viewport->ID);
+    // ImGui::SetNextWindowPos(viewport->WorkPos);
+    // ImGui::SetNextWindowSize(viewport->WorkSize);
+    // ImGui::SetNextWindowViewport(viewport->ID);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    // ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    // ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 
-    ImGui::Begin("DockSpaceWindow", nullptr, window_flags);
-    ImGui::DockSpace(ImGui::GetID("MainDockSpace"), ImVec2(0.0f, 0.0f), dockspace_flags);    
-    ImGui::End();
+    // ImGui::Begin("DockSpaceWindow", nullptr, window_flags);
+    // ImGui::DockSpace(ImGui::GetID("MainDockSpace"), ImVec2(0.0f, 0.0f), dockspace_flags);    
+    // ImGui::End();
 
-    ImGui::PopStyleVar(2);
+    // ImGui::PopStyleVar(2);
     
-    ImGui::SetNextWindowDockID(ImGui::GetID("MainDockSpace"), ImGuiCond_Always);
-    ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(viewport->WorkSize);
+    // ImGui::SetNextWindowDockID(ImGui::GetID("MainDockSpace"), ImGuiCond_Always);
+    // ImGui::SetNextWindowPos(viewport->WorkPos);
+    // ImGui::SetNextWindowSize(viewport->WorkSize);
 
     return true;
 }
@@ -490,9 +522,146 @@ void Application::EndFrame()
     m_FrameIdx = (m_FrameIdx + 1) % FRAMES_IN_FLIGHT;
 }
 
-void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& info)
+void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& pipelineInfo)
 {
+    // Pipeline layout
+    {
+        VkPipelineLayoutCreateInfo layInfo{};
+        layInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layInfo.setLayoutCount = pipelineInfo.setLayCount;
+        layInfo.pSetLayouts = pipelineInfo.setLays;
+        layInfo.pushConstantRangeCount = pipelineInfo.pushConstRangesCount;
+        layInfo.pPushConstantRanges = pipelineInfo.pushConstRanges;
 
+        VK_CHECK(vkCreatePipelineLayout(m_Device, &layInfo, nullptr, &pipeline.layout));
+    }
+
+    VkPipelineVertexInputStateCreateInfo vertexInput{};
+    vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInput.vertexBindingDescriptionCount = pipelineInfo.bindingCount;
+    vertexInput.pVertexBindingDescriptions = pipelineInfo.bindings;
+    vertexInput.vertexAttributeDescriptionCount = pipelineInfo.attribCount;
+    vertexInput.pVertexAttributeDescriptions = pipelineInfo.attribs;
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT |
+        VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT;
+
+    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    VkDynamicState dynamicStates[] =
+    {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = 2;
+    dynamicState.pDynamicStates = dynamicStates;
+
+    VkPipelineViewportStateCreateInfo viewport{};
+    viewport.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport.viewportCount = 1;
+    viewport.scissorCount = 1;
+
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_FALSE;
+    depthStencil.depthWriteEnable = VK_FALSE;
+
+    VkShaderModule vertMod = nullptr, fragMod = nullptr;
+    u8* vertCode, *fragCode;
+    VkPipelineShaderStageCreateInfo stages[2];
+    memset(stages, 0, sizeof(VkPipelineShaderStageCreateInfo) * 2);
+    {
+        u64 vertSize = 0, fragSize = 0;
+        vertCode = ReadFile(pipelineInfo.vertPath, &vertSize, "rb");
+        VkShaderModuleCreateInfo modInfo{};
+        modInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        modInfo.codeSize = vertSize;
+        modInfo.pCode = reinterpret_cast<u32*>(vertCode);
+        VK_CHECK(vkCreateShaderModule(m_Device, &modInfo, nullptr, &vertMod));
+        
+        fragCode = ReadFile(pipelineInfo.fragPath, &fragSize, "rb");
+        modInfo.codeSize = fragSize;
+        modInfo.pCode = reinterpret_cast<u32*>(fragCode);
+        VK_CHECK(vkCreateShaderModule(m_Device, &modInfo, nullptr, &fragMod));
+    }
+    stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[0].module = vertMod;
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].pName = "main";
+
+    stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[1].module = fragMod;
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].pName = "main";
+
+    VkGraphicsPipelineCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    info.stageCount = 2;
+    info.pStages = stages;
+    info.pVertexInputState = &vertexInput;
+    info.pInputAssemblyState = &inputAssembly;
+    info.pRasterizationState = &rasterizer;
+    info.pMultisampleState = &multisampling;
+    info.pDepthStencilState = &depthStencil;
+    info.pColorBlendState = &colorBlending;
+    info.pDynamicState = &dynamicState;
+    info.pViewportState = &viewport;
+    info.layout = pipeline.layout;
+    info.renderPass = pipelineInfo.renderPass;
+    info.subpass = pipelineInfo.subpassIndex;
+    info.basePipelineHandle = nullptr;
+    info.basePipelineIndex = -1;
+
+    VK_CHECK(vkCreateGraphicsPipelines(m_Device, nullptr, 1, &info, nullptr, &pipeline.pipeline));
+    vkDestroyShaderModule(m_Device, vertMod, nullptr);
+    vkDestroyShaderModule(m_Device, fragMod, nullptr);
+    free(vertCode);
+    free(fragCode);
+}
+
+void Application::DestroyPipeline(Pipeline& pipeline)
+{
+    vkDestroyPipelineLayout(m_Device, pipeline.layout, nullptr);
+    vkDestroyPipeline(m_Device, pipeline.pipeline, nullptr);
 }
 
 VkCommandBuffer Application::CreateCommandBuffer()
@@ -719,4 +888,20 @@ void Application::Resize()
         VK_CHECK(vkCreateSemaphore(m_Device, &semaInfo, nullptr, &sema));
     for(auto& sema : m_ImageAvailable)
         VK_CHECK(vkCreateSemaphore(m_Device, &semaInfo, nullptr, &sema));
+}
+
+u8* Application::ReadFile(const char* path, u64* size, const char* mode)
+{
+    FILE* file = fopen(path, mode);
+    assert(file);
+    fseek(file, 0, SEEK_END);
+    u64 s = ftell(file);
+    rewind(file);
+
+    u8* buffer = (u8*)calloc(1, sizeof(u8) * s);
+    fread(buffer, 1, sizeof(u8) * s, file);
+
+    fclose(file);
+    *size = s;
+    return buffer;
 }
