@@ -119,22 +119,21 @@ Application::Application() : m_Width{800}, m_Height{600}
             m_PresentQueueIdx,
             m_ComputeQueueIdx
         };
-        std::vector<i32> uniqueQueues;
 
         for(i32 i = 0; i < 3; i++) 
         {
             bool exists = false;
-            for(i32 idx : uniqueQueues) 
+            for(i32 idx : m_UniqueQueues) 
             {
                 if(idx == indices[i])
                     exists = true;
             }
             if(!exists)
-                uniqueQueues.push_back(indices[i]);
+                m_UniqueQueues.push_back(indices[i]);
         }
 
         std::vector<VkDeviceQueueCreateInfo> queueInfos;
-        for(i32 idx : uniqueQueues)
+        for(i32 idx : m_UniqueQueues)
         {
             VkDeviceQueueCreateInfo info = {
                 .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -543,6 +542,77 @@ void Application::EndFrame()
     m_FrameIdx = (m_FrameIdx + 1) % FRAMES_IN_FLIGHT;
 }
 
+void Application::CreateImage(Image& image, const ImageInfo& imgInfo)
+{
+    image.info = imgInfo;
+
+    {
+        VkImageCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        info.arrayLayers = 1;
+        info.extent.width = imgInfo.width;
+        info.extent.height = imgInfo.height;
+        info.extent.depth = 1;
+        info.format = imgInfo.format;
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        info.mipLevels = 1;
+        info.queueFamilyIndexCount = m_UniqueQueues.size();
+        info.pQueueFamilyIndices = m_UniqueQueues.data();
+        info.sharingMode = m_UniqueQueues.size() > 1 ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+        info.samples = VK_SAMPLE_COUNT_1_BIT;
+        info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        info.usage = imgInfo.usage;
+
+        VK_CHECK(vkCreateImage(m_Device, &info, nullptr, &image.image));
+    }
+    {
+        VkMemoryRequirements memReq{};
+        vkGetImageMemoryRequirements(m_Device, image.image, &memReq);
+
+        VkMemoryAllocateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        info.allocationSize = memReq.size;
+        info.memoryTypeIndex = FindMemoryType(m_PhysicalDevice, memReq.memoryTypeBits, imgInfo.memProps);
+        
+        VK_CHECK(vkAllocateMemory(m_Device, &info, nullptr, &image.mem));
+        VK_CHECK(vkBindImageMemory(m_Device, image.image, image.mem, 0));
+    }
+    {
+        VkImageViewCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        info.components = { VK_COMPONENT_SWIZZLE_IDENTITY };
+        info.format = imgInfo.format;
+        info.image = image.image;
+        info.subresourceRange = {
+            .aspectMask = imgInfo.aspectFlags,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        };
+        info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        
+        VK_CHECK(vkCreateImageView(m_Device, &info, nullptr, &image.view));
+    }
+
+    if(!imgInfo.gpuResource)
+        return;
+    assert(false && "GPU images isn't supported yet!");
+}
+
+void Application::DestroyImage(Image& image)
+{
+    vkDestroyImage(m_Device, image.image, nullptr);
+    vkDestroyImageView(m_Device, image.view, nullptr);
+    vkFreeMemory(m_Device, image.mem, nullptr);
+
+    if(!image.info.gpuResource)
+        return;
+    assert(false && "GPU images isn't supported yet!");
+    memset(&image, 0, sizeof(image));
+}
+
 void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& pipelineInfo)
 {
     // Pipeline layout
@@ -798,24 +868,15 @@ void Application::CreateSwapchain()
             .oldSwapchain = nullptr
         };
 
-        std::vector<u32> queues = {
-            (u32)m_GraphicsQueueIdx,
-            (u32)m_ComputeQueueIdx,
-            (u32)m_PresentQueueIdx
-        };
-
-        std::sort(queues.begin(), queues.end());
-        queues.erase(std::unique(queues.begin(), queues.end()), queues.end());
-
-        if(queues.size() == 1)
+        if(m_UniqueQueues.size() == 1)
         {
             info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         }
         else
         {
             info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-            info.queueFamilyIndexCount = queues.size();
-            info.pQueueFamilyIndices = queues.data();
+            info.queueFamilyIndexCount = m_UniqueQueues.size();
+            info.pQueueFamilyIndices = m_UniqueQueues.data();
         }
 
         VK_CHECK(vkCreateSwapchainKHR(m_Device, &info, nullptr, &m_Swapchain));

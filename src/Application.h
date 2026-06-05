@@ -33,11 +33,6 @@ public:
     void Run();
 
 private:
-    struct Pipeline {
-        VkPipeline pipeline;
-        VkPipelineLayout layout;
-    };
-
     struct PipelineInfo {
         const char* vertPath;
         const char* fragPath;
@@ -53,6 +48,28 @@ private:
         VkRenderPass renderPass;
     };
 
+    struct Pipeline {
+        VkPipeline pipeline;
+        VkPipelineLayout layout;
+    };
+
+    struct ImageInfo {
+        u32 width, height;
+        VkFormat format;
+        bool gpuResource;
+        VkImageUsageFlagBits usage;
+        VkMemoryPropertyFlagBits memProps;
+        VkImageAspectFlags aspectFlags;
+    };
+
+    struct Image {
+        ImageInfo info;
+        VkImage image;
+        VkDeviceMemory mem;
+        VkImageView view;
+        VkSampler sampler;
+    };
+
 private:
     bool StartFrame();
     void EndFrame();
@@ -61,8 +78,27 @@ private:
     void DestroyCommandBuffer(VkCommandBuffer buffer);
     void BeginCommandBuffer(VkCommandBuffer buffer, VkCommandBufferUsageFlags flags);
 
+    void CreateImage(Image& image, const ImageInfo& info);
+    void DestroyImage(Image& image);
+
     void CreatePipeline(Pipeline& pipeline, const PipelineInfo& info);
     void DestroyPipeline(Pipeline& pipeline);
+
+private:
+    static inline uint32_t FindMemoryType(VkPhysicalDevice device, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        VkPhysicalDeviceMemoryProperties props = {};
+        vkGetPhysicalDeviceMemoryProperties(device, &props);
+
+        for (uint32_t i = 0; i < props.memoryTypeCount; i++)
+        {
+            if ((typeFilter & (1 << i)) && (props.memoryTypes[i].propertyFlags & properties) == properties)
+            {
+                return i;
+            }
+        }
+
+        assert(false && "Failed to find the suitable memory index!");
+    }
 
     ScCaps GetScCaps();
     void CreateSwapchain();
@@ -80,6 +116,7 @@ private:
     VkDevice m_Device = nullptr;
     i32 m_GraphicsQueueIdx = -1, m_PresentQueueIdx = -1, m_ComputeQueueIdx = -1;
     VkQueue m_GraphicsQueue = nullptr, m_PresentQueue = nullptr, m_ComputeQueue = nullptr;
+    std::vector<u32> m_UniqueQueues;
     VkRenderPass m_Pass = nullptr;
 
     ScCaps m_ScCaps{};
