@@ -159,7 +159,47 @@ Application::Application() : m_Width{800}, m_Height{600}
         vkGetDeviceQueue(m_Device, m_PresentQueueIdx, 0, &m_PresentQueue);
         vkGetDeviceQueue(m_Device, m_ComputeQueueIdx, 0, &m_ComputeQueue);
     }
-    
+    // Depth image
+    {
+        ImageInfo info{};
+        info.width = m_Width;
+        info.height = m_Height;
+        info.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+        info.gpuResource = false;
+        info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        info.format = VK_FORMAT_UNDEFINED;
+
+        // Getting format
+        {
+            VkFormat reqFormats[] = {
+                VK_FORMAT_D32_SFLOAT,
+                VK_FORMAT_D32_SFLOAT_S8_UINT,
+                VK_FORMAT_D24_UNORM_S8_UINT
+            };
+
+            u32 flags = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+            for(u32 i = 0; i < 3; i++) {
+                VkFormatProperties props{};
+                vkGetPhysicalDeviceFormatProperties(m_PhysicalDevice, reqFormats[i], &props);
+
+                if((props.linearTilingFeatures & flags) == flags) {
+                    info.format = reqFormats[i];
+                    break;
+                }
+                if((props.optimalTilingFeatures & flags) == flags) {
+                    info.format = reqFormats[i];
+                    break;
+                }
+            }
+
+            if(info.format == VK_FORMAT_UNDEFINED)
+                assert(false && "Failed to find suitable depth format!");
+        }
+
+        CreateImage(m_DepthImage, info);
+    }
     // Renderpass
     {
         m_ScCaps = GetScCaps();
@@ -173,28 +213,49 @@ Application::Application() : m_Width{800}, m_Height{600}
         colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
 
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = m_DepthImage.info.format;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+
+        constexpr u32 attachmentCount = 2;
+        VkAttachmentDescription attachments[attachmentCount] = {
+            colorAttachment,
+            depthAttachment
+        };
+
         VkAttachmentReference colorRef{};
         colorRef.attachment = 0;
         colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+        VkAttachmentReference depthRef{};
+        depthRef.attachment = 1;
+        depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
         VkSubpassDescription subpass{};
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &colorRef;
+        subpass.pDepthStencilAttachment = &depthRef;
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
         VkSubpassDependency dependency{};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
         dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         dependency.dependencyFlags = 0;
 
         VkRenderPassCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        info.attachmentCount = 1;
-        info.pAttachments = &colorAttachment;
+        info.attachmentCount = attachmentCount;
+        info.pAttachments = attachments;
         info.subpassCount = 1;
         info.pSubpasses = &subpass;
         info.dependencyCount = 1;
@@ -272,7 +333,6 @@ Application::Application() : m_Width{800}, m_Height{600}
         ImGui_ImplGlfw_InitForVulkan(m_Window, true);
         
         ImGui_ImplVulkan_InitInfo info{};
-        info.Subpass = 0;
         info.Allocator = nullptr;
         info.ApiVersion = VK_API_VERSION_1_0;
         info.DescriptorPool = m_UiDescPool;
@@ -285,6 +345,7 @@ Application::Application() : m_Width{800}, m_Height{600}
         info.Queue = m_GraphicsQueue;
         info.QueueFamily = m_GraphicsQueueIdx;
         info.RenderPass = m_Pass;
+        info.Subpass = 0;
         
         ImGui_ImplVulkan_Init(&info);
         ImGui_ImplVulkan_CreateFontsTexture();
@@ -395,8 +456,9 @@ Application::~Application()
     for(auto& view : m_ScImageViews)
         vkDestroyImageView(m_Device, view, nullptr);
 
-    vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+    DestroyImage(m_DepthImage);
     vkDestroyRenderPass(m_Device, m_Pass, nullptr);
+    vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
     vkDestroyDevice(m_Device, nullptr);
     vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
     vkDestroyInstance(m_Instance, nullptr);
@@ -476,13 +538,14 @@ bool Application::StartFrame()
     VK_CHECK(vkResetCommandBuffer(m_CmdBuffs[m_FrameIdx], 0));
     BeginCommandBuffer(m_CmdBuffs[m_FrameIdx], VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-    VkClearValue clearColor = {};
-    clearColor.color = {0.1f, 0.1f, 0.1f, 1.0f};
+    VkClearValue clearColors[2] = {};
+    clearColors[0].color = {0.1f, 0.1f, 0.1f, 1.0f};
+    clearColors[1].depthStencil.depth = 1.0f;
 
     VkRenderPassBeginInfo rpInfo{};
     rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    rpInfo.clearValueCount = 1;
-    rpInfo.pClearValues = &clearColor;
+    rpInfo.clearValueCount = 2;
+    rpInfo.pClearValues = clearColors;
     rpInfo.renderArea.offset = {0, 0};
     rpInfo.renderArea.extent = m_ScCaps.extent;
     rpInfo.renderPass = m_Pass;
@@ -932,10 +995,15 @@ void Application::CreateSwapchain()
         m_Framebuffers.reserve(m_ScImages.size());
         for(auto& view : m_ScImageViews)
         {
+            VkImageView views[] = {
+                view,
+                m_DepthImage.view
+            };
+
             VkFramebufferCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            info.attachmentCount = 1;
-            info.pAttachments = &view;
+            info.attachmentCount = 2;
+            info.pAttachments = views;
             info.renderPass = m_Pass;
             info.layers = 1;
             info.width = m_ScCaps.extent.width;
@@ -970,11 +1038,27 @@ void Application::Resize()
     for(auto& sema : m_ImageAvailable)
         vkDestroySemaphore(m_Device, sema, nullptr);
 
+    VkFormat depthFormat = m_DepthImage.info.format;
+    DestroyImage(m_DepthImage);
     vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
     m_ScImages.clear();
     m_ScImageViews.clear();
     m_Framebuffers.clear();
     m_RenderFinished.clear();
+
+    // Depth image
+    {
+        ImageInfo info{};
+        info.width = m_Width;
+        info.height = m_Height;
+        info.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+        info.gpuResource = false;
+        info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        info.format = depthFormat;
+
+        CreateImage(m_DepthImage, info);
+    }
 
     m_ScCaps = GetScCaps();
     CreateSwapchain();

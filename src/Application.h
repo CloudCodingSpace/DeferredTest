@@ -57,7 +57,7 @@ private:
         u32 width, height;
         VkFormat format;
         bool gpuResource;
-        VkImageUsageFlagBits usage;
+        VkImageUsageFlags usage;
         VkMemoryPropertyFlagBits memProps;
         VkImageAspectFlags aspectFlags;
     };
@@ -117,7 +117,6 @@ private:
     i32 m_GraphicsQueueIdx = -1, m_PresentQueueIdx = -1, m_ComputeQueueIdx = -1;
     VkQueue m_GraphicsQueue = nullptr, m_PresentQueue = nullptr, m_ComputeQueue = nullptr;
     std::vector<u32> m_UniqueQueues;
-    VkRenderPass m_Pass = nullptr;
 
     ScCaps m_ScCaps{};
     VkSwapchainKHR m_Swapchain = nullptr;
@@ -132,6 +131,8 @@ private:
     std::vector<VkSemaphore> m_RenderFinished;
     VkDescriptorPool m_UiDescPool = nullptr;
 
+    VkRenderPass m_Pass = nullptr;
+    Image m_DepthImage{};
     Pipeline m_Pipeline;
     
     u32 m_ImageIdx = 0;

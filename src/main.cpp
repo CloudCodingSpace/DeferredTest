@@ -2,8 +2,8 @@
 
 int main(void)
 {
-    Application tracer;
-    tracer.Run();
+    Application app{};
+    app.Run();
 
     return 0;
 }
