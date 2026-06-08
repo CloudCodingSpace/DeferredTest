@@ -598,7 +598,23 @@ void Application::CreateImage(Image& image, const ImageInfo& imgInfo)
 
     if(!imgInfo.gpuResource)
         return;
-    assert(false && "GPU images isn't supported yet!");
+    
+    {
+        VkSamplerCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        info.anisotropyEnable = VK_FALSE;
+        info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+        info.compareEnable = VK_FALSE;
+        info.compareOp = VK_COMPARE_OP_ALWAYS;
+        info.minFilter = VK_FILTER_LINEAR;
+        info.magFilter = VK_FILTER_LINEAR;
+        info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        
+        VK_CHECK(vkCreateSampler(m_Device, &info, nullptr, &image.sampler));
+    }
 }
 
 void Application::DestroyImage(Image& image)
@@ -609,7 +625,8 @@ void Application::DestroyImage(Image& image)
 
     if(!image.info.gpuResource)
         return;
-    assert(false && "GPU images isn't supported yet!");
+    vkDestroySampler(m_Device, image.sampler, nullptr);
+
     memset(&image, 0, sizeof(image));
 }
 
