@@ -420,13 +420,34 @@ Application::Application() : m_Width{800}, m_Height{600}
     }
     // Pipeline
     {
+        auto attribs = Vertex::GetAttribs();
+        auto bindings = Vertex::GetBindings();
+
         PipelineInfo info{};
         info.renderPass = m_Pass;
         info.subpassIndex = 0;
         info.vertPath = "assets/shaders/main.vert.spv";
         info.fragPath = "assets/shaders/main.frag.spv";
+        info.attribCount = attribs.size();
+        info.attribs = attribs.data();
+        info.bindingCount = bindings.size();
+        info.bindings = bindings.data();
         
         CreatePipeline(m_Pipeline, info);
+    }
+    // Mesh
+    {
+        Vertex vertices[] = {
+            { glm::vec3(-0.5, -0.5, 0.0f), },
+            { glm::vec3( 0.5, -0.5, 0.0f), },
+            { glm::vec3( 0.0,  0.5, 0.0f)  }
+        };
+
+        u32 indices[] = {
+            0, 1, 2
+        };
+
+        m_Mesh.Create(this, sizeof(vertices), vertices, sizeof(indices)/sizeof(u32), indices);
     }
 }
 
@@ -438,6 +459,7 @@ Application::~Application()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
+    m_Mesh.Destroy();
     DestroyPipeline(m_Pipeline);
 
     vkDestroyDescriptorPool(m_Device, m_UiDescPool, nullptr);
@@ -500,7 +522,7 @@ void Application::Run()
             vkCmdSetScissor(m_CmdBuffs[m_FrameIdx], 0, 1, &scissor);
         
             vkCmdBindPipeline(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.pipeline);
-            vkCmdDraw(m_CmdBuffs[m_FrameIdx], 3, 1, 0, 0);
+            m_Mesh.Render();
         }
 
         // ImGui
@@ -632,6 +654,9 @@ void Application::CreateBuffer(Buffer& buffer, const BufferInfo& buffInfo)
         VK_CHECK(vkAllocateMemory(m_Device, &info, nullptr, &buffer.memory));
         VK_CHECK(vkBindBufferMemory(m_Device, buffer.buffer, buffer.memory, 0));
     }
+
+    if(buffInfo.data)
+        UploadDataToBuffer(buffer, buffInfo.data);
 }
 
 void Application::DestroyBuffer(Buffer& buffer)
@@ -644,7 +669,7 @@ void Application::DestroyBuffer(Buffer& buffer)
 
 void Application::UploadDataToBuffer(Buffer& buffer, void* data)
 {
-    if((buffer.info.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == VK_BUFFER_USAGE_TRANSFER_DST_BIT || !buffer.info.size)
+    if((buffer.info.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != VK_BUFFER_USAGE_TRANSFER_DST_BIT || !buffer.info.size)
         assert(false && "Can't upload to buffer!");
 
     VkCommandBuffer cmdBuff = CreateCommandBuffer();
@@ -1172,4 +1197,41 @@ u8* Application::ReadFile(const char* path, u64* size, const char* mode)
     fclose(file);
     *size = s;
     return buffer;
+}
+
+void Application::Mesh::Create(Application* app, u64 vertexSize, void* vertexData, u64 indexCount, u32* indices) 
+{
+    m_App = app;
+    m_IndexCount = indexCount;
+
+    BufferInfo info{};
+    info.size = vertexSize;
+    info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    info.data = vertexData;
+
+    app->CreateBuffer(m_VertexBuffer, info);
+
+    info.size = indexCount * sizeof(u32);
+    info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    info.data = indices;
+
+    app->CreateBuffer(m_IndexBuffer, info);
+}
+
+void Application::Mesh::Destroy()
+{
+    m_App->DestroyBuffer(m_VertexBuffer);
+    m_App->DestroyBuffer(m_IndexBuffer);
+    m_IndexCount = 0;
+}
+
+void Application::Mesh::Render()
+{
+    VkCommandBuffer cmdBuff = m_App->m_CmdBuffs[m_App->m_FrameIdx];
+
+    VkDeviceSize offset[] = { 0 };
+    vkCmdBindVertexBuffers(cmdBuff, 0, 1, &m_VertexBuffer.buffer, offset);
+    vkCmdBindIndexBuffer(cmdBuff, m_IndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(cmdBuff, m_IndexCount, 1, 0, 0, 0);
 }

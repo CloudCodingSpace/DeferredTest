@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <set>
+#include <array>
 
 #include <glm/glm.hpp>
 
@@ -73,7 +74,7 @@ private:
     struct BufferInfo {
         u64 size;
         VkMemoryPropertyFlags memProps;
-        VkBufferUsageFlagBits usage;
+        VkBufferUsageFlags usage;
         void* data;
     };
 
@@ -81,6 +82,50 @@ private:
         BufferInfo info;
         VkBuffer buffer;
         VkDeviceMemory memory;
+    };
+
+    struct Vertex {
+        glm::vec3 pos;
+
+        static inline std::array<VkVertexInputBindingDescription, 1> GetBindings()
+        {
+            std::array<VkVertexInputBindingDescription, 1> bindings;
+            bindings[0].binding = 0;
+            bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            bindings[0].stride = sizeof(Vertex);
+
+            return bindings;
+        }
+
+        static inline std::array<VkVertexInputAttributeDescription, 1> GetAttribs() 
+        {
+            std::array<VkVertexInputAttributeDescription, 1> attribs;
+            attribs[0].binding = 0;
+            attribs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribs[0].location = 0;
+            attribs[0].offset = offsetof(Vertex, pos);
+
+            return attribs;
+        }
+    };
+
+    class Mesh
+    {
+    public:
+        void Create(Application* app, u64 vertexSize, void* vertexData, u64 indexCount, u32* indices);
+        void Destroy();
+
+        void Render();
+    
+        inline Buffer& GetVertexBuffer() { return m_VertexBuffer; } 
+        inline Buffer& GetIndexBuffer() { return m_IndexBuffer; } 
+        inline u64 GetIndexCount() { return m_IndexCount; }
+
+    private:
+        Buffer m_VertexBuffer{};
+        Buffer m_IndexBuffer{};
+        u64 m_IndexCount = 0;
+        Application* m_App = nullptr;
     };
 
 private:
@@ -151,6 +196,7 @@ private:
     VkRenderPass m_Pass = nullptr;
     Image m_DepthImage{};
     Pipeline m_Pipeline;
+    Mesh m_Mesh{};
     
     u32 m_ImageIdx = 0;
     u32 m_FrameIdx = 0;

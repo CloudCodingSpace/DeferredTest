@@ -1,13 +1,14 @@
 #version 450
 
-const vec2 pos[3] = vec2[3] (
-    vec2(-0.5, -0.5),
-    vec2( 0.5, -0.5),
-    vec2( 0.0,  0.5)
-);
+// const vec2 pos[3] = vec2[3] (
+//     vec2(-0.5, -0.5),
+//     vec2( 0.5, -0.5),
+//     vec2( 0.0,  0.5)
+// );
+
+layout (location = 0) in vec3 pos;
 
 void main() {
-    vec2 position = pos[gl_VertexIndex];
-    position.y *= -1.0f;
-    gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = vec4(pos, 1.0);
+    gl_Position.y *= -1.0;
 }
