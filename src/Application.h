@@ -72,7 +72,7 @@ private:
 
     struct BufferInfo {
         u64 size;
-        VkMemoryPropertyFlagBits memProps;
+        VkMemoryPropertyFlags memProps;
         VkBufferUsageFlagBits usage;
         void* data;
     };
@@ -93,6 +93,7 @@ private:
 
     void CreateBuffer(Buffer& buffer, const BufferInfo& info);
     void DestroyBuffer(Buffer& buffer);
+    void UploadDataToBuffer(Buffer& buffer, void* data);
 
     void CreateImage(Image& image, const ImageInfo& info);
     void DestroyImage(Image& image);

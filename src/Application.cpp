@@ -630,6 +630,7 @@ void Application::CreateBuffer(Buffer& buffer, const BufferInfo& buffInfo)
         info.allocationSize = req.size;
         
         VK_CHECK(vkAllocateMemory(m_Device, &info, nullptr, &buffer.memory));
+        VK_CHECK(vkBindBufferMemory(m_Device, buffer.buffer, buffer.memory, 0));
     }
 }
 
@@ -639,6 +640,54 @@ void Application::DestroyBuffer(Buffer& buffer)
     vkFreeMemory(m_Device, buffer.memory, nullptr);
 
     memset(&buffer, 0, sizeof(buffer));
+}
+
+void Application::UploadDataToBuffer(Buffer& buffer, void* data)
+{
+    if((buffer.info.usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == VK_BUFFER_USAGE_TRANSFER_DST_BIT || !buffer.info.size)
+        assert(false && "Can't upload to buffer!");
+
+    VkCommandBuffer cmdBuff = CreateCommandBuffer();
+    VkFence fence = nullptr;
+    {
+        VkFenceCreateInfo info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+        VK_CHECK(vkCreateFence(m_Device, &info, nullptr, &fence));
+    }
+
+    BufferInfo buffInfo{};
+    buffInfo.size = buffer.info.size;
+    buffInfo.memProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    buffInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+    Buffer stagingBuffer{};
+    CreateBuffer(stagingBuffer, buffInfo);
+
+    void* mappedMem = nullptr;
+    VK_CHECK(vkMapMemory(m_Device, stagingBuffer.memory, 0, buffInfo.size, 0, &mappedMem));
+    memcpy(mappedMem, data, buffInfo.size);
+    vkUnmapMemory(m_Device, stagingBuffer.memory);
+
+    BeginCommandBuffer(cmdBuff, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    VkBufferCopy region{};
+    region.size = buffInfo.size;
+    region.srcOffset = 0;
+    region.dstOffset = 0;
+    vkCmdCopyBuffer(cmdBuff, stagingBuffer.buffer, buffer.buffer, 1, &region);
+
+    vkEndCommandBuffer(cmdBuff);
+
+    VkSubmitInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    info.commandBufferCount = 1;
+    info.pCommandBuffers = &cmdBuff;
+
+    VK_CHECK(vkQueueSubmit(m_GraphicsQueue, 1, &info, fence));
+    VK_CHECK(vkWaitForFences(m_Device, 1, &fence, VK_TRUE, UINT64_MAX));
+
+    DestroyBuffer(stagingBuffer);
+    vkDestroyFence(m_Device, fence, nullptr);
+    DestroyCommandBuffer(cmdBuff);
 }
 
 void Application::CreateImage(Image& image, const ImageInfo& imgInfo)
