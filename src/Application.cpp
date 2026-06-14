@@ -605,6 +605,42 @@ void Application::EndFrame()
     m_FrameIdx = (m_FrameIdx + 1) % FRAMES_IN_FLIGHT;
 }
 
+void Application::CreateBuffer(Buffer& buffer, const BufferInfo& buffInfo)
+{
+    buffer.info = buffInfo;
+
+    {
+        VkBufferCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        info.queueFamilyIndexCount = m_UniqueQueues.size();
+        info.pQueueFamilyIndices = m_UniqueQueues.data();
+        info.sharingMode = m_UniqueQueues.size() > 1 ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+        info.size = buffInfo.size;
+        info.usage = buffInfo.usage;
+        
+        VK_CHECK(vkCreateBuffer(m_Device, &info, nullptr, &buffer.buffer));
+    }
+    {
+        VkMemoryRequirements req{};
+        vkGetBufferMemoryRequirements(m_Device, buffer.buffer, &req);
+
+        VkMemoryAllocateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        info.memoryTypeIndex = FindMemoryType(m_PhysicalDevice, req.memoryTypeBits, buffInfo.memProps);
+        info.allocationSize = req.size;
+        
+        VK_CHECK(vkAllocateMemory(m_Device, &info, nullptr, &buffer.memory));
+    }
+}
+
+void Application::DestroyBuffer(Buffer& buffer)
+{
+    vkDestroyBuffer(m_Device, buffer.buffer, nullptr);
+    vkFreeMemory(m_Device, buffer.memory, nullptr);
+
+    memset(&buffer, 0, sizeof(buffer));
+}
+
 void Application::CreateImage(Image& image, const ImageInfo& imgInfo)
 {
     image.info = imgInfo;

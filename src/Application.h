@@ -70,6 +70,19 @@ private:
         VkSampler sampler;
     };
 
+    struct BufferInfo {
+        u64 size;
+        VkMemoryPropertyFlagBits memProps;
+        VkBufferUsageFlagBits usage;
+        void* data;
+    };
+
+    struct Buffer {
+        BufferInfo info;
+        VkBuffer buffer;
+        VkDeviceMemory memory;
+    };
+
 private:
     bool StartFrame();
     void EndFrame();
@@ -77,6 +90,9 @@ private:
     VkCommandBuffer CreateCommandBuffer();
     void DestroyCommandBuffer(VkCommandBuffer buffer);
     void BeginCommandBuffer(VkCommandBuffer buffer, VkCommandBufferUsageFlags flags);
+
+    void CreateBuffer(Buffer& buffer, const BufferInfo& info);
+    void DestroyBuffer(Buffer& buffer);
 
     void CreateImage(Image& image, const ImageInfo& info);
     void DestroyImage(Image& image);
