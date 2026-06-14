@@ -9,6 +9,7 @@
 #include <array>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 typedef uint32_t u32;
 typedef uint64_t u64;
@@ -34,6 +35,7 @@ public:
     void Run();
 
 private:
+
     struct PipelineInfo {
         const char* vertPath;
         const char* fragPath;
@@ -128,6 +130,25 @@ private:
         Application* m_App = nullptr;
     };
 
+    class Camera
+    {
+    public:
+        void Create(Application* app);
+
+        void Update();
+
+        inline glm::mat4 GetVP() { return m_Proj * m_View; }
+    private:
+        glm::mat4 m_Proj = glm::mat4(1.0f);
+        glm::mat4 m_View = glm::mat4(1.0f);
+        glm::vec3 m_Front, m_Right, m_Up, m_Pos;
+        Application* m_App = nullptr;
+        bool m_FirstMouse = true;
+
+        float m_LastX = 400, m_LastY = 300, m_Yaw = -90.0f, m_Pitch = 0.0f;
+        const float m_Fov = 86.0f, m_Sensitivity = 0.05f, m_Speed = 0.5f;
+    };
+
 private:
     bool StartFrame();
     void EndFrame();
@@ -197,7 +218,8 @@ private:
     Image m_DepthImage{};
     Pipeline m_Pipeline;
     Mesh m_Mesh{};
-    
+
+    Camera m_Camera{};
     u32 m_ImageIdx = 0;
     u32 m_FrameIdx = 0;
     double m_DeltaTime = 0.0, m_LastTime = 0.0;

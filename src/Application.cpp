@@ -423,6 +423,11 @@ Application::Application() : m_Width{800}, m_Height{600}
         auto attribs = Vertex::GetAttribs();
         auto bindings = Vertex::GetBindings();
 
+        VkPushConstantRange pcRange{};
+        pcRange.offset = 0;
+        pcRange.size = sizeof(glm::mat4) * 2;
+        pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
         PipelineInfo info{};
         info.renderPass = m_Pass;
         info.subpassIndex = 0;
@@ -432,6 +437,8 @@ Application::Application() : m_Width{800}, m_Height{600}
         info.attribs = attribs.data();
         info.bindingCount = bindings.size();
         info.bindings = bindings.data();
+        info.pushConstRangesCount = 1;
+        info.pushConstRanges = &pcRange;
         
         CreatePipeline(m_Pipeline, info);
     }
@@ -449,6 +456,8 @@ Application::Application() : m_Width{800}, m_Height{600}
 
         m_Mesh.Create(this, sizeof(vertices), vertices, sizeof(indices)/sizeof(u32), indices);
     }
+    // Camera
+    m_Camera.Create(this);
 }
 
 Application::~Application()
@@ -522,6 +531,14 @@ void Application::Run()
             vkCmdSetScissor(m_CmdBuffs[m_FrameIdx], 0, 1, &scissor);
         
             vkCmdBindPipeline(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.pipeline);
+            {
+                glm::mat4 pcData[2];
+                pcData[0] = m_Camera.GetVP();
+                pcData[1] = glm::mat4(1.0f);
+            
+                vkCmdPushConstants(m_CmdBuffs[m_FrameIdx], m_Pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pcData), pcData);
+            }
+
             m_Mesh.Render();
         }
 
@@ -533,10 +550,11 @@ void Application::Run()
         
         EndFrame();
         
+        m_Camera.Update();
+        glfwPollEvents();
+
         if(glfwGetKey(m_Window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             break;
-
-        glfwPollEvents();
     }
 }
 
@@ -1234,4 +1252,110 @@ void Application::Mesh::Render()
     vkCmdBindVertexBuffers(cmdBuff, 0, 1, &m_VertexBuffer.buffer, offset);
     vkCmdBindIndexBuffer(cmdBuff, m_IndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
     vkCmdDrawIndexed(cmdBuff, m_IndexCount, 1, 0, 0, 0);
+}
+
+void Application::Camera::Create(Application* app)
+{
+    m_App = app;
+    m_Pos = glm::vec3(0, 0, 3);
+    m_Front = glm::vec3(0, 0, -1);
+    m_Up = glm::vec3(0, 1, 0);
+    m_Right = glm::normalize(glm::cross(m_Up, m_Front));
+    m_LastX = m_App->m_Width / 2;
+    m_LastY = m_App->m_Height / 2;
+    
+    if(m_App->m_Height == 0)
+        return;
+    m_Proj = glm::perspective(glm::radians(m_Fov), m_App->m_Width/(float)m_App->m_Height, 0.01f, 1000.0f);
+    m_Proj[1][1] *= -1.0f;
+    m_View = glm::lookAt(m_Pos, m_Pos + m_Front, m_Up);
+}
+
+void Application::Camera::Update()
+{
+    float dt = m_App->m_DeltaTime;
+    GLFWwindow* window = m_App->m_Window;
+    bool moved = false;
+
+    {
+        if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            m_Pos += m_Front * m_Speed * dt;
+            moved = true;
+        }
+        if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            m_Pos -= m_Front * m_Speed * dt;
+            moved = true;
+        }
+        if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            m_Pos += m_Right * m_Speed * dt;
+            moved = true;
+        }
+        if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            m_Pos -= m_Right * m_Speed * dt;
+            moved = true;
+        }
+    }
+
+    {
+        if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+        {
+            double xpos, ypos;
+            glfwGetCursorPos(window, &xpos, &ypos);
+
+            if(m_FirstMouse)
+            {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                m_LastX = xpos;
+                m_LastY = ypos;
+                m_FirstMouse = false;
+            }
+
+            float dtX = xpos - m_LastX;
+            float dtY = m_LastY - ypos;
+
+            m_LastX = xpos;
+            m_LastY = ypos;
+
+            if(dtX != 0 || dtY != 0)
+            {
+                dtX *= m_Sensitivity;
+                dtY *= m_Sensitivity;
+
+                m_Yaw += dtX;
+                m_Pitch += dtY;
+
+                if(m_Pitch > 89.9f)
+                    m_Pitch = 89.9f;
+                else if(m_Pitch < -89.9f)
+                    m_Pitch = -89.9f;
+                
+                glm::vec3 front(0.0f);
+                front.x = glm::cos(glm::radians(m_Yaw)) * glm::cos(glm::radians(m_Pitch));
+                front.y = glm::sin(glm::radians(m_Pitch));
+                front.z = glm::sin(glm::radians(m_Yaw)) * glm::cos(glm::radians(m_Pitch));
+
+                m_Front = front;
+                moved = true;
+            }
+        }
+        else if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_RELEASE)
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            m_FirstMouse = true;
+        }
+    }
+
+    m_Right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), m_Front));
+    m_Up = glm::normalize(glm::cross(m_Front, m_Right));
+
+    if(!moved)
+        return;
+    
+    if(m_App->m_Height == 0)
+        return;
+
+    
+    m_Proj = glm::perspective(glm::radians(m_Fov), m_App->m_Width/(float)m_App->m_Height, 0.01f, 1000.0f);
+    m_Proj[1][1] *= -1.0f;
+    m_View = glm::lookAt(m_Pos, m_Pos + m_Front, m_Up);
 }
