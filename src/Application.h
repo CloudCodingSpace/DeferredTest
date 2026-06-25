@@ -7,8 +7,10 @@
 #include <vector>
 #include <set>
 #include <array>
+#include <string>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 typedef uint32_t u32;
@@ -115,6 +117,7 @@ private:
     {
     public:
         void Create(Application* app, u64 vertexSize, void* vertexData, u64 indexCount, u32* indices);
+        void LoadGLTF(Application* app, std::string path);
         void Destroy();
 
         void Render();

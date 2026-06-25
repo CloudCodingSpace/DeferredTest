@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <vector>
 
+#include <cgltf/cgltf.h>
+
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_glfw.h>
 #include <imgui/imgui_impl_vulkan.h>
@@ -444,17 +446,7 @@ Application::Application() : m_Width{800}, m_Height{600}
     }
     // Mesh
     {
-        Vertex vertices[] = {
-            { glm::vec3(-0.5, -0.5, 0.0f), },
-            { glm::vec3( 0.5, -0.5, 0.0f), },
-            { glm::vec3( 0.0,  0.5, 0.0f)  }
-        };
-
-        u32 indices[] = {
-            0, 1, 2
-        };
-
-        m_Mesh.Create(this, sizeof(vertices), vertices, sizeof(indices)/sizeof(u32), indices);
+        m_Mesh.LoadGLTF(this, "assets/meshes/Damaged Helmet/DamagedHelmet.gltf");
     }
     // Camera
     m_Camera.Create(this);
@@ -1237,6 +1229,68 @@ void Application::Mesh::Create(Application* app, u64 vertexSize, void* vertexDat
     app->CreateBuffer(m_IndexBuffer, info);
 }
 
+void Application::Mesh::LoadGLTF(Application* app, std::string path)
+{
+    cgltf_data* data = nullptr;
+    cgltf_options options{};
+    assert((cgltf_parse_file(&options, path.c_str(), &data) == cgltf_result_success) && "Failed to load gltf model");
+    assert((cgltf_load_buffers(&options, data, path.c_str()) == cgltf_result_success) && "Failed to load gltf models");
+
+    assert((data->meshes_count == 1) && "To keep things simple, only single meshes models are allowed!");
+
+    std::vector<Application::Vertex> vertices;
+    std::vector<u32> indices;
+
+    cgltf_mesh* mesh = &data->meshes[0];
+    for(u32 i = 0; i < mesh->primitives_count; i++) {
+        cgltf_primitive* prim = &mesh->primitives[i];
+        assert((prim->type == cgltf_primitive_type_triangles) && "Only triangulated mesh are supported!");
+        cgltf_accessor* posAccessor = nullptr;
+        cgltf_accessor* normalAccessor = nullptr;
+        cgltf_accessor* uvAccessor = nullptr;
+        cgltf_accessor* indexAccessor = prim->indices;
+
+        for(u32 j = 0; j < prim->attributes_count; j++) {
+            cgltf_attribute* attrib = &prim->attributes[j];
+            if(attrib->type == cgltf_attribute_type_position)
+                posAccessor = attrib->data;
+            else if(attrib->type == cgltf_attribute_type_texcoord)
+                uvAccessor = attrib->data;
+            else if(attrib->type == cgltf_attribute_type_normal)
+                normalAccessor = attrib->data;
+        }
+
+        assert(posAccessor && "There is no position in the given primitive!");
+        assert(normalAccessor && "There is no normal in the given primitive!");
+        assert(uvAccessor && "There is no uv in the given primitive!");
+        assert(indexAccessor && "There is no index data in the given primitive!");
+        
+        for(u32 j = 0; j < posAccessor->count; j++)
+        {
+            Application::Vertex vertex{};
+            cgltf_accessor_read_float(posAccessor, j, glm::value_ptr(vertex.pos), sizeof(float) * 3);
+         
+            // TODO: Load other data in the vertex buffer
+         
+            vertices.push_back(vertex);
+        }
+
+        
+        // u32 indexData[3] = {};
+        // cgltf_accessor_read_uint(indexAccessor, i, indexData, sizeof(u32) * 3);
+        // for(u32 j : indexData)
+        //     indices.push_back(j);
+
+        for(u32 j = 0; j < indexAccessor->count; j++) {
+            indices.push_back(cgltf_accessor_read_index(indexAccessor, j));
+        }
+
+        // TODO: Load required textures
+    }
+
+    this->Create(app, sizeof(Application::Vertex) * vertices.size(), vertices.data(), indices.size(), indices.data());
+}
+
 void Application::Mesh::Destroy()
 {
     m_App->DestroyBuffer(m_VertexBuffer);
@@ -1292,6 +1346,14 @@ void Application::Camera::Update()
         }
         if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
             m_Pos -= m_Right * m_Speed * dt;
+            moved = true;
+        }
+        if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            m_Pos -= m_Up * m_Speed * dt;
+            moved = true;
+        }
+        if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            m_Pos += m_Up * m_Speed * dt;
             moved = true;
         }
     }
