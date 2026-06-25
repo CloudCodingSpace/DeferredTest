@@ -1272,8 +1272,8 @@ std::vector<Application::Mesh> Application::Mesh::LoadGLTF(Application* app, std
             {
                 Application::Vertex vertex{};
                 cgltf_accessor_read_float(posAccessor, j, glm::value_ptr(vertex.pos), sizeof(float) * 3);
-            
-                // TODO: Load other data in the vertex buffer
+                cgltf_accessor_read_float(normalAccessor, j, glm::value_ptr(vertex.normal), sizeof(float) * 3);
+                cgltf_accessor_read_float(uvAccessor, j, glm::value_ptr(vertex.uv), sizeof(float) * 2);
             
                 vertices.push_back(vertex);
             }

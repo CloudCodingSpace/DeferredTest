@@ -90,6 +90,8 @@ private:
 
     struct Vertex {
         glm::vec3 pos;
+        glm::vec3 normal;
+        glm::vec2 uv;
 
         static inline std::array<VkVertexInputBindingDescription, 1> GetBindings()
         {
@@ -101,13 +103,23 @@ private:
             return bindings;
         }
 
-        static inline std::array<VkVertexInputAttributeDescription, 1> GetAttribs() 
+        static inline std::array<VkVertexInputAttributeDescription, 3> GetAttribs() 
         {
-            std::array<VkVertexInputAttributeDescription, 1> attribs;
+            std::array<VkVertexInputAttributeDescription, 3> attribs;
             attribs[0].binding = 0;
             attribs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
             attribs[0].location = 0;
             attribs[0].offset = offsetof(Vertex, pos);
+            
+            attribs[1].binding = 0;
+            attribs[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribs[1].location = 1;
+            attribs[1].offset = offsetof(Vertex, normal);
+            
+            attribs[2].binding = 0;
+            attribs[2].format = VK_FORMAT_R32G32_SFLOAT;
+            attribs[2].location = 2;
+            attribs[2].offset = offsetof(Vertex, uv);
 
             return attribs;
         }
