@@ -7,7 +7,9 @@ anybody doesn't use this code for production but is of course free to use for in
 
 This project loads .gltf (single meshed models only to keep things simple) and renders it. For using the camera, 
 hold right mouse button to move the camera and for movement :-
-     - W = Forward
-     - A = Left
-     - S = Back
-     - D = Right
+    - W = Forward
+    - A = Left
+    - S = Back
+    - D = Right
+    - Left Shift = Down
+    - Space = Up
