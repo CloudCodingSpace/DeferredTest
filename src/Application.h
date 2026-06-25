@@ -116,8 +116,9 @@ private:
     class Mesh
     {
     public:
+        static std::vector<Mesh> LoadGLTF(Application* app, std::string path);
+        
         void Create(Application* app, u64 vertexSize, void* vertexData, u64 indexCount, u32* indices);
-        void LoadGLTF(Application* app, std::string path);
         void Destroy();
 
         void Render();
@@ -220,7 +221,7 @@ private:
     VkRenderPass m_Pass = nullptr;
     Image m_DepthImage{};
     Pipeline m_Pipeline;
-    Mesh m_Mesh{};
+    std::vector<Mesh> m_Model{};
 
     Camera m_Camera{};
     u32 m_ImageIdx = 0;

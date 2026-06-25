@@ -446,7 +446,7 @@ Application::Application() : m_Width{800}, m_Height{600}
     }
     // Mesh
     {
-        m_Mesh.LoadGLTF(this, "assets/meshes/Damaged Helmet/DamagedHelmet.gltf");
+        m_Model = Mesh::LoadGLTF(this, "assets/meshes/sofa/sofa_1k.gltf");
     }
     // Camera
     m_Camera.Create(this);
@@ -460,7 +460,8 @@ Application::~Application()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    m_Mesh.Destroy();
+    for(auto& mesh : m_Model)
+        mesh.Destroy();
     DestroyPipeline(m_Pipeline);
 
     vkDestroyDescriptorPool(m_Device, m_UiDescPool, nullptr);
@@ -531,7 +532,8 @@ void Application::Run()
                 vkCmdPushConstants(m_CmdBuffs[m_FrameIdx], m_Pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pcData), pcData);
             }
 
-            m_Mesh.Render();
+            for(auto& mesh : m_Model)
+                mesh.Render();
         }
 
         // ImGui
@@ -1229,66 +1231,66 @@ void Application::Mesh::Create(Application* app, u64 vertexSize, void* vertexDat
     app->CreateBuffer(m_IndexBuffer, info);
 }
 
-void Application::Mesh::LoadGLTF(Application* app, std::string path)
+std::vector<Application::Mesh> Application::Mesh::LoadGLTF(Application* app, std::string path)
 {
     cgltf_data* data = nullptr;
     cgltf_options options{};
     assert((cgltf_parse_file(&options, path.c_str(), &data) == cgltf_result_success) && "Failed to load gltf model");
     assert((cgltf_load_buffers(&options, data, path.c_str()) == cgltf_result_success) && "Failed to load gltf models");
 
-    assert((data->meshes_count == 1) && "To keep things simple, only single meshes models are allowed!");
+    std::vector<Mesh> model;
 
-    std::vector<Application::Vertex> vertices;
-    std::vector<u32> indices;
+    for(u32 k = 0; k < data->meshes_count; k++) {
+        cgltf_mesh* mesh = &data->meshes[k];
+        for(u32 i = 0; i < mesh->primitives_count; i++) {
+            std::vector<Application::Vertex> vertices;
+            std::vector<u32> indices;
 
-    cgltf_mesh* mesh = &data->meshes[0];
-    for(u32 i = 0; i < mesh->primitives_count; i++) {
-        cgltf_primitive* prim = &mesh->primitives[i];
-        assert((prim->type == cgltf_primitive_type_triangles) && "Only triangulated mesh are supported!");
-        cgltf_accessor* posAccessor = nullptr;
-        cgltf_accessor* normalAccessor = nullptr;
-        cgltf_accessor* uvAccessor = nullptr;
-        cgltf_accessor* indexAccessor = prim->indices;
+            cgltf_primitive* prim = &mesh->primitives[i];
+            assert((prim->type == cgltf_primitive_type_triangles) && "Only triangulated mesh are supported!");
+            cgltf_accessor* posAccessor = nullptr;
+            cgltf_accessor* normalAccessor = nullptr;
+            cgltf_accessor* uvAccessor = nullptr;
+            cgltf_accessor* indexAccessor = prim->indices;
 
-        for(u32 j = 0; j < prim->attributes_count; j++) {
-            cgltf_attribute* attrib = &prim->attributes[j];
-            if(attrib->type == cgltf_attribute_type_position)
-                posAccessor = attrib->data;
-            else if(attrib->type == cgltf_attribute_type_texcoord)
-                uvAccessor = attrib->data;
-            else if(attrib->type == cgltf_attribute_type_normal)
-                normalAccessor = attrib->data;
+            for(u32 j = 0; j < prim->attributes_count; j++) {
+                cgltf_attribute* attrib = &prim->attributes[j];
+                if(attrib->type == cgltf_attribute_type_position)
+                    posAccessor = attrib->data;
+                else if(attrib->type == cgltf_attribute_type_texcoord)
+                    uvAccessor = attrib->data;
+                else if(attrib->type == cgltf_attribute_type_normal)
+                    normalAccessor = attrib->data;
+            }
+
+            assert(posAccessor && "There is no position in the given primitive!");
+            assert(normalAccessor && "There is no normal in the given primitive!");
+            assert(uvAccessor && "There is no uv in the given primitive!");
+            assert(indexAccessor && "There is no index data in the given primitive!");
+            
+            for(u32 j = 0; j < posAccessor->count; j++)
+            {
+                Application::Vertex vertex{};
+                cgltf_accessor_read_float(posAccessor, j, glm::value_ptr(vertex.pos), sizeof(float) * 3);
+            
+                // TODO: Load other data in the vertex buffer
+            
+                vertices.push_back(vertex);
+            }
+
+            for(u32 j = 0; j < indexAccessor->count; j++) {
+                indices.push_back(cgltf_accessor_read_index(indexAccessor, j));
+            }
+
+            // TODO: Load required textures
+
+            Mesh m{};
+            m.Create(app, sizeof(Application::Vertex) * vertices.size(), vertices.data(), indices.size(), indices.data());
+            model.push_back(m);
         }
-
-        assert(posAccessor && "There is no position in the given primitive!");
-        assert(normalAccessor && "There is no normal in the given primitive!");
-        assert(uvAccessor && "There is no uv in the given primitive!");
-        assert(indexAccessor && "There is no index data in the given primitive!");
-        
-        for(u32 j = 0; j < posAccessor->count; j++)
-        {
-            Application::Vertex vertex{};
-            cgltf_accessor_read_float(posAccessor, j, glm::value_ptr(vertex.pos), sizeof(float) * 3);
-         
-            // TODO: Load other data in the vertex buffer
-         
-            vertices.push_back(vertex);
-        }
-
-        
-        // u32 indexData[3] = {};
-        // cgltf_accessor_read_uint(indexAccessor, i, indexData, sizeof(u32) * 3);
-        // for(u32 j : indexData)
-        //     indices.push_back(j);
-
-        for(u32 j = 0; j < indexAccessor->count; j++) {
-            indices.push_back(cgltf_accessor_read_index(indexAccessor, j));
-        }
-
-        // TODO: Load required textures
     }
 
-    this->Create(app, sizeof(Application::Vertex) * vertices.size(), vertices.data(), indices.size(), indices.data());
+    return model;
 }
 
 void Application::Mesh::Destroy()
