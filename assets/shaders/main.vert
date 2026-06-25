@@ -7,6 +7,10 @@ layout (push_constant) uniform PushConstant {
     mat4 model;
 } pc;
 
+layout (location = 0) out vec3 FragPos;
+
 void main() {
-    gl_Position = pc.vp * pc.model * vec4(pos, 1.0);
+    vec4 worldPos = pc.model * vec4(pos, 1.0);
+    gl_Position = pc.vp * worldPos;
+    FragPos = worldPos.xyz;
 }
