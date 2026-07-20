@@ -38,7 +38,7 @@ Application::Application() : m_Width{800}, m_Height{600}
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
             .pEngineName = "Application",
             .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-            .apiVersion = VK_API_VERSION_1_0
+            .apiVersion = VK_API_VERSION_1_2
         };
 
         VkInstanceCreateInfo info = {
@@ -321,19 +321,30 @@ Application::Application() : m_Width{800}, m_Height{600}
     }
     // UI descriptor pool
     {
-        VkDescriptorPoolSize pool_sizes[] =
-        {
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
-        };
+        VkDescriptorPoolSize pool_sizes[] = {
+			{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } 
+		};
+
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         pool_info.maxSets = 0;
         for (VkDescriptorPoolSize& pool_size : pool_sizes)
             pool_info.maxSets += pool_size.descriptorCount;
-        pool_info.poolSizeCount = 1;
+        pool_info.poolSizeCount = sizeof(pool_sizes)/sizeof(pool_sizes[0]);
         pool_info.pPoolSizes = pool_sizes;
-        VK_CHECK(vkCreateDescriptorPool(m_Device, &pool_info, nullptr, &m_UiDescPool));
+
+        VK_CHECK(vkCreateDescriptorPool(m_Device, &pool_info, nullptr, &m_DescPool));
     }
     // ImGui
     {
@@ -355,7 +366,7 @@ Application::Application() : m_Width{800}, m_Height{600}
         ImGui_ImplVulkan_InitInfo info{};
         info.Allocator = nullptr;
         info.ApiVersion = VK_API_VERSION_1_2;
-        info.DescriptorPool = m_UiDescPool;
+        info.DescriptorPool = m_DescPool;
         info.Device = m_Device;
         info.ImageCount = FRAMES_IN_FLIGHT;
         info.MinImageCount = FRAMES_IN_FLIGHT;
@@ -438,6 +449,86 @@ Application::Application() : m_Width{800}, m_Height{600}
             colors[ImGuiCol_TextSelectedBg] =           (ImVec4){0.075f, 0.647f, 0.784f, 0.270f};
         }
     }
+
+    // Uniform resources
+    {
+        // Light ssbo
+        {
+            constexpr int lightCount = 1;
+
+            struct {
+                int count;
+                Light lights[lightCount];
+            } lightData;
+
+            lightData.count = lightCount;
+            // Only 1 light as of now
+            lightData.lights[0].pos = glm::vec3(0.0f, -3.0f, -3.0f);
+            lightData.lights[0].color = glm::vec3(1.0f, 1.0f, 1.0f);
+
+            BufferInfo info{};
+            info.size = sizeof(lightData);
+            info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            info.data = &lightData;
+
+            CreateBuffer(m_LightSsbo, info);
+        }
+    }
+
+    // Descriptor Set Layouts
+    {
+        // Light ssbo layout
+        {
+            VkDescriptorSetLayoutBinding binding{};
+            binding.binding = 0;
+            binding.descriptorCount = 1;
+            binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+            VkDescriptorSetLayoutCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            info.bindingCount = 1;
+            info.pBindings = &binding;
+
+            VK_CHECK(vkCreateDescriptorSetLayout(m_Device, &info, nullptr, &m_LightSsboLayout));
+        }
+    }
+
+    // Descriptor Sets
+    {
+        // Light ssbo set
+        {
+            // Creating the set
+            VkDescriptorSetAllocateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            info.descriptorPool = m_DescPool;
+            info.descriptorSetCount = 1;
+            info.pSetLayouts = &m_LightSsboLayout;
+            
+            for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) 
+                VK_CHECK(vkAllocateDescriptorSets(m_Device, &info, &m_LightSsboSets[i]));
+        
+            // Updating the set
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = m_LightSsbo.buffer;
+            bufferInfo.offset = 0;
+            bufferInfo.range = m_LightSsbo.info.size;
+
+            VkWriteDescriptorSet write{};
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            write.dstBinding = 0;
+            write.pBufferInfo = &bufferInfo;
+            
+            for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+                write.dstSet = m_LightSsboSets[i];
+                vkUpdateDescriptorSets(m_Device, 1, &write, 0, nullptr);
+            }
+        }
+    }
+
     // Pipeline
     {
         auto attribs = Vertex::GetAttribs();
@@ -459,6 +550,8 @@ Application::Application() : m_Width{800}, m_Height{600}
         info.bindings = bindings.data();
         info.pushConstRangesCount = 1;
         info.pushConstRanges = &pcRange;
+        info.setLayCount = 1;
+        info.setLays = &m_LightSsboLayout;
         
         CreatePipeline(m_Pipeline, info);
     }
@@ -482,7 +575,10 @@ Application::~Application()
         mesh.Destroy();
     DestroyPipeline(m_Pipeline);
 
-    vkDestroyDescriptorPool(m_Device, m_UiDescPool, nullptr);
+    DestroyBuffer(m_LightSsbo);
+    vkDestroyDescriptorSetLayout(m_Device, m_LightSsboLayout, nullptr);
+
+    vkDestroyDescriptorPool(m_Device, m_DescPool, nullptr);
 
     for(auto& fence : m_InFlightFences)
         vkDestroyFence(m_Device, fence, nullptr);
@@ -542,6 +638,15 @@ void Application::Run()
             vkCmdSetScissor(m_CmdBuffs[m_FrameIdx], 0, 1, &scissor);
         
             vkCmdBindPipeline(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.pipeline);
+            
+            {
+                VkDescriptorSet sets[] = {
+                    m_LightSsboSets[m_FrameIdx]
+                };
+
+                vkCmdBindDescriptorSets(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.layout, 0, sizeof(sets)/sizeof(sets[0]), sets, 0, nullptr);
+            }
+
             {
                 glm::mat4 pcData[2];
                 pcData[0] = m_Camera.GetVP();
@@ -1003,7 +1108,7 @@ void Application::BeginCommandBuffer(VkCommandBuffer buffer, VkCommandBufferUsag
     VK_CHECK(vkBeginCommandBuffer(buffer, &info));
 }
 
-ScCaps Application::GetScCaps()
+Application::ScCaps Application::GetScCaps()
 {
     ScCaps caps;
     VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_PhysicalDevice, m_Surface, &caps.caps));

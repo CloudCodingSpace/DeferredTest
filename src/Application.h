@@ -20,14 +20,6 @@ typedef int32_t i32;
 
 #define FRAMES_IN_FLIGHT 2
 
-struct ScCaps
-{
-    VkExtent2D extent;
-    VkSurfaceFormatKHR format;
-    VkPresentModeKHR presentMode;
-    VkSurfaceCapabilitiesKHR caps; 
-};
-
 class Application
 {
 public:
@@ -37,6 +29,18 @@ public:
     void Run();
 
 private:
+    struct ScCaps
+    {
+        VkExtent2D extent;
+        VkSurfaceFormatKHR format;
+        VkPresentModeKHR presentMode;
+        VkSurfaceCapabilitiesKHR caps; 
+    };
+
+    struct Light {
+        glm::vec3 pos;
+        glm::vec3 color;
+    };
 
     struct PipelineInfo {
         const char* vertPath;
@@ -222,7 +226,11 @@ private:
     VkFence m_InFlightFences[FRAMES_IN_FLIGHT];
     VkSemaphore m_ImageAvailable[FRAMES_IN_FLIGHT];
     std::vector<VkSemaphore> m_RenderFinished;
-    VkDescriptorPool m_UiDescPool = nullptr;
+    VkDescriptorPool m_DescPool = nullptr;
+
+    VkDescriptorSetLayout m_LightSsboLayout = nullptr;
+    VkDescriptorSet m_LightSsboSets[FRAMES_IN_FLIGHT];
+    Buffer m_LightSsbo{};
 
     VkRenderPass m_Pass = nullptr;
     Image m_DepthImage{};
