@@ -10,9 +10,11 @@ layout (push_constant) uniform PushConstant {
 } pc;
 
 layout (location = 0) out vec3 FragPos;
+layout (location = 1) out vec3 oNormal;
 
 void main() {
     vec4 worldPos = pc.model * vec4(pos, 1.0);
     gl_Position = pc.vp * worldPos;
     FragPos = worldPos.xyz;
+    oNormal = normalize(normal);
 }

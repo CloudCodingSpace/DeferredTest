@@ -847,7 +847,7 @@ void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& pipelin
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -895,8 +895,9 @@ void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& pipelin
 
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_FALSE;
-    depthStencil.depthWriteEnable = VK_FALSE;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthWriteEnable = VK_TRUE;
 
     VkShaderModule vertMod = nullptr, fragMod = nullptr;
     u8* vertCode, *fragCode;
@@ -1343,11 +1344,11 @@ void Application::Camera::Update()
             moved = true;
         }
         if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-            m_Pos += m_Right * m_Speed * dt;
+            m_Pos -= m_Right * m_Speed * dt;
             moved = true;
         }
         if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-            m_Pos -= m_Right * m_Speed * dt;
+            m_Pos += m_Right * m_Speed * dt;
             moved = true;
         }
         if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
@@ -1409,8 +1410,8 @@ void Application::Camera::Update()
         }
     }
 
-    m_Right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), m_Front));
-    m_Up = glm::normalize(glm::cross(m_Front, m_Right));
+    m_Right = glm::normalize(glm::cross(m_Front, glm::vec3(0, 1, 0)));
+    m_Up = glm::normalize(glm::cross(m_Right, m_Front));
 
     if(!moved)
         return;
