@@ -24,7 +24,7 @@ void main() {
 
     for(uint i = 0; i < lightSsbo.count; i++) {
         Light light = lightSsbo.lights[i];
-        vec3 L = normalize(FragPos - light.pos);
+        vec3 L = normalize(FragPos + light.pos);
         float attenuation = 1 / dot(L, L);
 
         float NdotL = max(dot(normalize(normal), L), 0.0);

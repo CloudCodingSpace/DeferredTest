@@ -463,7 +463,7 @@ Application::Application() : m_Width{800}, m_Height{600}
 
             lightData.count = lightCount;
             // Only 1 light as of now
-            lightData.lights[0].pos = glm::vec3(0.0f, -3.0f, -3.0f);
+            lightData.lights[0].pos = glm::vec3(0.0f, 3.0f, 3.0f);
             lightData.lights[0].color = glm::vec3(1.0f, 1.0f, 1.0f);
 
             BufferInfo info{};
