@@ -1251,22 +1251,18 @@ std::vector<Application::Mesh> Application::Mesh::LoadGLTF(Application* app, std
             assert((prim->type == cgltf_primitive_type_triangles) && "Only triangulated mesh are supported!");
             cgltf_accessor* posAccessor = nullptr;
             cgltf_accessor* normalAccessor = nullptr;
-            cgltf_accessor* uvAccessor = nullptr;
             cgltf_accessor* indexAccessor = prim->indices;
 
             for(u32 j = 0; j < prim->attributes_count; j++) {
                 cgltf_attribute* attrib = &prim->attributes[j];
                 if(attrib->type == cgltf_attribute_type_position)
                     posAccessor = attrib->data;
-                else if(attrib->type == cgltf_attribute_type_texcoord)
-                    uvAccessor = attrib->data;
                 else if(attrib->type == cgltf_attribute_type_normal)
                     normalAccessor = attrib->data;
             }
 
             assert(posAccessor && "There is no position in the given primitive!");
             assert(normalAccessor && "There is no normal in the given primitive!");
-            assert(uvAccessor && "There is no uv in the given primitive!");
             assert(indexAccessor && "There is no index data in the given primitive!");
             
             for(u32 j = 0; j < posAccessor->count; j++)
@@ -1274,7 +1270,6 @@ std::vector<Application::Mesh> Application::Mesh::LoadGLTF(Application* app, std
                 Application::Vertex vertex{};
                 cgltf_accessor_read_float(posAccessor, j, glm::value_ptr(vertex.pos), sizeof(float) * 3);
                 cgltf_accessor_read_float(normalAccessor, j, glm::value_ptr(vertex.normal), sizeof(float) * 3);
-                cgltf_accessor_read_float(uvAccessor, j, glm::value_ptr(vertex.uv), sizeof(float) * 2);
             
                 vertices.push_back(vertex);
             }
