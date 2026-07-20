@@ -539,6 +539,10 @@ Application::Application() : m_Width{800}, m_Height{600}
         pcRange.size = sizeof(glm::mat4) * 2;
         pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+        VkDescriptorSetLayout lays[] = {
+            m_LightSsboLayout
+        };
+
         PipelineInfo info{};
         info.renderPass = m_Pass;
         info.subpassIndex = 0;
@@ -550,8 +554,8 @@ Application::Application() : m_Width{800}, m_Height{600}
         info.bindings = bindings.data();
         info.pushConstRangesCount = 1;
         info.pushConstRanges = &pcRange;
-        info.setLayCount = 1;
-        info.setLays = &m_LightSsboLayout;
+        info.setLayCount = sizeof(lays)/sizeof(lays[0]);
+        info.setLays = lays;
         
         CreatePipeline(m_Pipeline, info);
     }
