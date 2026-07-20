@@ -54,6 +54,7 @@ private:
         u32 attribCount;
         VkVertexInputAttributeDescription* attribs;
         u32 subpassIndex;
+        u32 colorAttachmentCount;
         VkRenderPass renderPass;
     };
 
@@ -239,7 +240,8 @@ private:
 
     VkRenderPass m_Pass = nullptr;
     Image m_DepthImage{};
-    Pipeline m_Pipeline;
+    Pipeline m_GBufferPipeline{};
+    Pipeline m_CompositionPipeline{};
     std::vector<Mesh> m_Model{};
 
     Camera m_Camera{};

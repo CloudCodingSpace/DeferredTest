@@ -2,10 +2,10 @@
 
 #extension GL_EXT_scalar_block_layout : require
 
-layout (location = 0) out vec4 FragColor;
+layout (input_attachment_index = 0, set = 1, binding = 0) uniform subpassInput positionAttachment;
+layout (input_attachment_index = 1, set = 1, binding = 1) uniform subpassInput normalAttachment;
 
-layout (location = 0) in vec3 FragPos;
-layout (location = 1) in vec3 normal;
+layout (location = 0) out vec4 FragColor;
 
 struct Light {
     vec3 pos;
@@ -19,6 +19,13 @@ layout (set = 0, binding = 0, scalar) buffer LightSSBO {
 
 void main() {
     const float ambient = .2;
+    vec3 FragPos = subpassLoad(positionAttachment).rgb;
+    vec3 normal = subpassLoad(normalAttachment).rgb;
+
+    if (subpassLoad(positionAttachment).a == 1.0) {
+        FragColor = vec4(0.1, 0.1, 0.1, 1.0);
+        return;
+    }
 
     vec3 totalLight = vec3(0.0);
 

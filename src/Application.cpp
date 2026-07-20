@@ -220,71 +220,7 @@ Application::Application() : m_Width{800}, m_Height{600}
 
         CreateImage(m_DepthImage, info);
     }
-    // Renderpass
-    {
-        m_ScCaps = GetScCaps();
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = m_ScCaps.format.format;
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-
-        VkAttachmentDescription depthAttachment{};
-        depthAttachment.format = m_DepthImage.info.format;
-        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-
-        constexpr u32 attachmentCount = 2;
-        VkAttachmentDescription attachments[attachmentCount] = {
-            colorAttachment,
-            depthAttachment
-        };
-
-        VkAttachmentReference colorRef{};
-        colorRef.attachment = 0;
-        colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkAttachmentReference depthRef{};
-        depthRef.attachment = 1;
-        depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-        VkSubpassDescription subpass{};
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorRef;
-        subpass.pDepthStencilAttachment = &depthRef;
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        dependency.dependencyFlags = 0;
-
-        VkRenderPassCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        info.attachmentCount = attachmentCount;
-        info.pAttachments = attachments;
-        info.subpassCount = 1;
-        info.pSubpasses = &subpass;
-        info.dependencyCount = 1;
-        info.pDependencies = &dependency;
-
-        VK_CHECK(vkCreateRenderPass(m_Device, &info, nullptr, &m_Pass));
-    }
-    // Swapchain
-    CreateSwapchain();
+    
     // Command pool and buffers
     {
         {
@@ -298,6 +234,178 @@ Application::Application() : m_Width{800}, m_Height{600}
         for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++)
             m_CmdBuffs[i] = CreateCommandBuffer();
     }
+
+    m_ScCaps = GetScCaps();
+
+    // Uniform resources & Attachments
+    {
+        // Light ssbo
+        {
+            constexpr int lightCount = 1;
+
+            struct {
+                int count;
+                Light lights[lightCount];
+            } lightData;
+
+            lightData.count = lightCount;
+            // Only 1 light as of now
+            lightData.lights[0].pos = glm::vec3(0.0f, 3.0f, 3.0f);
+            lightData.lights[0].color = glm::vec3(1.0f, 1.0f, 1.0f);
+
+            BufferInfo info{};
+            info.size = sizeof(lightData);
+            info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            info.data = &lightData;
+
+            CreateBuffer(m_LightSsbo, info);
+        }
+
+        // Attachments
+        {
+            ImageInfo info{};
+            info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+            info.width = m_ScCaps.extent.width;
+            info.height = m_ScCaps.extent.height;
+            info.gpuResource = false;
+            info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+            info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            info.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+
+            CreateImage(m_PositionAttachment, info);
+            CreateImage(m_NormalsAttachment, info);
+        }
+    }
+    // Renderpass
+    {
+        VkAttachmentDescription colorAttachment{};
+        colorAttachment.format = m_ScCaps.format.format;
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = m_DepthImage.info.format;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        
+        VkAttachmentDescription posAttachment{};
+        posAttachment.format = m_PositionAttachment.info.format;
+        posAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        posAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        posAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        posAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        posAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        posAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        posAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkAttachmentDescription normalAttachment{};
+        normalAttachment.format = m_NormalsAttachment.info.format;
+        normalAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        normalAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        normalAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        normalAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        normalAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        normalAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        normalAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        
+        constexpr u32 attachmentCount = 4;
+        VkAttachmentDescription attachments[attachmentCount] = {
+            colorAttachment,
+            depthAttachment,
+            posAttachment,
+            normalAttachment
+        };
+
+        VkAttachmentReference colorRef{};
+        colorRef.attachment = 0;
+        colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference depthRef{};
+        depthRef.attachment = 1;
+        depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference posRef{};
+        posRef.attachment = 2;
+        posRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        
+        VkAttachmentReference normalRef{};
+        normalRef.attachment = 3;
+        normalRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference gbufferOutputRefs[2] = {
+            posRef,
+            normalRef
+        };
+
+        VkAttachmentReference compositionInputRefs[2] = {
+            posRef,
+            normalRef
+        };
+        compositionInputRefs[0].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        compositionInputRefs[1].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkSubpassDescription gbuffer{};
+        gbuffer.colorAttachmentCount = sizeof(gbufferOutputRefs)/sizeof(gbufferOutputRefs[0]);
+        gbuffer.pColorAttachments = gbufferOutputRefs;
+        gbuffer.pDepthStencilAttachment = &depthRef;
+        gbuffer.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        
+        VkSubpassDescription composition{};
+        composition.colorAttachmentCount = 1;
+        composition.pColorAttachments = &colorRef;
+        composition.pDepthStencilAttachment = &depthRef;
+        composition.inputAttachmentCount = gbuffer.colorAttachmentCount;
+        composition.pInputAttachments = compositionInputRefs;
+        composition.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+
+        constexpr int dependencyCount = 2;
+        VkSubpassDependency dependencies[dependencyCount];
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].dstSubpass = 0;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependencies[0].srcAccessMask = 0;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[0].dependencyFlags = 0;
+
+        dependencies[1].srcSubpass = 0;
+        dependencies[1].dstSubpass = 1;
+        dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[1].dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        constexpr int subpassCount = 2;
+        VkSubpassDescription subpasses[subpassCount] = {
+            gbuffer,
+            composition
+        };
+
+        VkRenderPassCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        info.attachmentCount = attachmentCount;
+        info.pAttachments = attachments;
+        info.subpassCount = subpassCount;
+        info.pSubpasses = subpasses;
+        info.dependencyCount = dependencyCount;
+        info.pDependencies = dependencies;
+
+        VK_CHECK(vkCreateRenderPass(m_Device, &info, nullptr, &m_Pass));
+    }
+    // Swapchain
+    CreateSwapchain();
     // Sync objs
     {
         VkFenceCreateInfo fenceInfo{};
@@ -376,7 +484,7 @@ Application::Application() : m_Width{800}, m_Height{600}
         info.Queue = m_GraphicsQueue;
         info.QueueFamily = m_GraphicsQueueIdx;
         info.RenderPass = m_Pass;
-        info.Subpass = 0;
+        info.Subpass = 1;
         
         ImGui_ImplVulkan_Init(&info);
         ImGui_ImplVulkan_CreateFontsTexture();
@@ -449,48 +557,6 @@ Application::Application() : m_Width{800}, m_Height{600}
             colors[ImGuiCol_TextSelectedBg] =           (ImVec4){0.075f, 0.647f, 0.784f, 0.270f};
         }
     }
-
-    // Uniform resources & Attachments
-    {
-        // Light ssbo
-        {
-            constexpr int lightCount = 1;
-
-            struct {
-                int count;
-                Light lights[lightCount];
-            } lightData;
-
-            lightData.count = lightCount;
-            // Only 1 light as of now
-            lightData.lights[0].pos = glm::vec3(0.0f, 3.0f, 3.0f);
-            lightData.lights[0].color = glm::vec3(1.0f, 1.0f, 1.0f);
-
-            BufferInfo info{};
-            info.size = sizeof(lightData);
-            info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-            info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-            info.data = &lightData;
-
-            CreateBuffer(m_LightSsbo, info);
-        }
-
-        // Attachments
-        {
-            ImageInfo info{};
-            info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-            info.width = m_ScCaps.extent.width;
-            info.height = m_ScCaps.extent.height;
-            info.gpuResource = false;
-            info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-            info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-            info.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-
-            CreateImage(m_PositionAttachment, info);
-            CreateImage(m_NormalsAttachment, info);
-        }
-    }
-
     // Descriptor Set Layouts
     {
         // Light ssbo layout
@@ -618,24 +684,34 @@ Application::Application() : m_Width{800}, m_Height{600}
         pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
         VkDescriptorSetLayout lays[] = {
-            m_LightSsboLayout
+            m_LightSsboLayout,
+            m_GBufferLayout
         };
 
         PipelineInfo info{};
         info.renderPass = m_Pass;
-        info.subpassIndex = 0;
-        info.vertPath = "assets/shaders/main.vert.spv";
-        info.fragPath = "assets/shaders/main.frag.spv";
         info.attribCount = attribs.size();
         info.attribs = attribs.data();
         info.bindingCount = bindings.size();
         info.bindings = bindings.data();
+        info.vertPath = "assets/shaders/gbuffer.vert.spv";
+        info.fragPath = "assets/shaders/gbuffer.frag.spv";
+        info.subpassIndex = 0;
         info.pushConstRangesCount = 1;
         info.pushConstRanges = &pcRange;
-        info.setLayCount = sizeof(lays)/sizeof(lays[0]);
+        info.setLayCount = 1;
         info.setLays = lays;
+        info.colorAttachmentCount = 2;
         
-        CreatePipeline(m_Pipeline, info);
+        CreatePipeline(m_GBufferPipeline, info);
+        
+        info.subpassIndex = 1;
+        info.colorAttachmentCount = 1;
+        info.vertPath = "assets/shaders/composition.vert.spv";
+        info.fragPath = "assets/shaders/composition.frag.spv";
+        info.setLayCount = sizeof(lays)/sizeof(lays[0]);
+        
+        CreatePipeline(m_CompositionPipeline, info);
     }
     // Mesh
     {
@@ -655,7 +731,8 @@ Application::~Application()
 
     for(auto& mesh : m_Model)
         mesh.Destroy();
-    DestroyPipeline(m_Pipeline);
+    DestroyPipeline(m_GBufferPipeline);
+    DestroyPipeline(m_CompositionPipeline);
 
     DestroyImage(m_PositionAttachment);
     DestroyImage(m_NormalsAttachment);
@@ -722,34 +799,49 @@ void Application::Run()
             scissor.extent = m_ScCaps.extent;
             scissor.offset = { 0, 0 };
             vkCmdSetScissor(m_CmdBuffs[m_FrameIdx], 0, 1, &scissor);
-        
-            vkCmdBindPipeline(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.pipeline);
             
+            // GBuffer pass
             {
-                VkDescriptorSet sets[] = {
-                    m_LightSsboSets[m_FrameIdx]
-                };
+                vkCmdBindPipeline(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_GBufferPipeline.pipeline);
 
-                vkCmdBindDescriptorSets(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline.layout, 0, sizeof(sets)/sizeof(sets[0]), sets, 0, nullptr);
+                {
+                    glm::mat4 pcData[2];
+                    pcData[0] = m_Camera.GetVP();
+                    pcData[1] = glm::mat4(1.0f);
+                
+                    vkCmdPushConstants(m_CmdBuffs[m_FrameIdx], m_GBufferPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pcData), pcData);
+                }
+
+                for(auto& mesh : m_Model)
+                    mesh.Render();
             }
 
-            {
-                glm::mat4 pcData[2];
-                pcData[0] = m_Camera.GetVP();
-                pcData[1] = glm::mat4(1.0f);
-            
-                vkCmdPushConstants(m_CmdBuffs[m_FrameIdx], m_Pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pcData), pcData);
-            }
+            vkCmdNextSubpass(m_CmdBuffs[m_FrameIdx], VK_SUBPASS_CONTENTS_INLINE);
 
-            for(auto& mesh : m_Model)
-                mesh.Render();
+            // Composition pass
+            {
+                vkCmdBindPipeline(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_CompositionPipeline.pipeline);
+            
+                {
+                    VkDescriptorSet sets[] = {
+                        m_LightSsboSets[m_FrameIdx],
+                        m_GBufferSets[m_FrameIdx]
+                    };
+
+                    vkCmdBindDescriptorSets(m_CmdBuffs[m_FrameIdx], VK_PIPELINE_BIND_POINT_GRAPHICS, m_CompositionPipeline.layout, 0, sizeof(sets)/sizeof(sets[0]), sets, 0, nullptr);
+                }
+
+                vkCmdDraw(m_CmdBuffs[m_FrameIdx], 3, 1, 0, 0);
+            }
         }
 
         // ImGui
-        ImGui::Begin("Settings");
-        ImGui::TextColored(ImVec4(0, 255, 0, 244), "Delta Time: %.3fms", m_DeltaTime * 1000);
-        ImGui::TextColored(ImVec4(0, 255, 0, 244), "FPS: %.1f Hz", 1/m_DeltaTime);
-        ImGui::End();
+        {
+            ImGui::Begin("Settings");
+            ImGui::TextColored(ImVec4(0, 255, 0, 244), "Delta Time: %.3fms", m_DeltaTime * 1000);
+            ImGui::TextColored(ImVec4(0, 255, 0, 244), "FPS: %.1f Hz", 1/m_DeltaTime);
+            ImGui::End();
+        }
         
         EndFrame();
         
@@ -781,13 +873,15 @@ bool Application::StartFrame()
     VK_CHECK(vkResetCommandBuffer(m_CmdBuffs[m_FrameIdx], 0));
     BeginCommandBuffer(m_CmdBuffs[m_FrameIdx], VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-    VkClearValue clearColors[2] = {};
+    VkClearValue clearColors[4] = {};
     clearColors[0].color = {0.1f, 0.1f, 0.1f, 1.0f};
     clearColors[1].depthStencil.depth = 1.0f;
+    clearColors[2].color = {0.1f, 0.1f, 0.1f, 1.0f};
+    clearColors[3].color = {0.1f, 0.1f, 0.1f, 1.0f};
 
     VkRenderPassBeginInfo rpInfo{};
     rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    rpInfo.clearValueCount = 2;
+    rpInfo.clearValueCount = 4;
     rpInfo.pClearValues = clearColors;
     rpInfo.renderArea.offset = {0, 0};
     rpInfo.renderArea.extent = m_ScCaps.extent;
@@ -806,8 +900,8 @@ bool Application::StartFrame()
 void Application::EndFrame()
 {
     ImGui::EndFrame();
-	ImGui::Render();
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), m_CmdBuffs[m_FrameIdx], nullptr);
+    ImGui::Render();
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), m_CmdBuffs[m_FrameIdx], nullptr);
 
 	ImGui::UpdatePlatformWindows();
 	ImGui::RenderPlatformWindowsDefault();
@@ -1072,7 +1166,7 @@ void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& pipelin
         VK_COLOR_COMPONENT_B_BIT |
         VK_COLOR_COMPONENT_A_BIT;
 
-    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.blendEnable = VK_FALSE;
     colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
@@ -1080,11 +1174,16 @@ void Application::CreatePipeline(Pipeline& pipeline, const PipelineInfo& pipelin
     colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
+    std::vector<VkPipelineColorBlendAttachmentState> attachments;
+    attachments.resize(pipelineInfo.colorAttachmentCount);
+    for(auto& attachment : attachments)
+        attachment = colorBlendAttachment;
+
     VkPipelineColorBlendStateCreateInfo colorBlending{};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.attachmentCount = pipelineInfo.colorAttachmentCount;
+    colorBlending.pAttachments = attachments.data();
 
     VkDynamicState dynamicStates[] =
     {
@@ -1329,12 +1428,14 @@ void Application::CreateSwapchain()
         {
             VkImageView views[] = {
                 view,
-                m_DepthImage.view
+                m_DepthImage.view,
+                m_PositionAttachment.view,
+                m_NormalsAttachment.view
             };
 
             VkFramebufferCreateInfo info{};
             info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            info.attachmentCount = 2;
+            info.attachmentCount = 4;
             info.pAttachments = views;
             info.renderPass = m_Pass;
             info.layers = 1;
@@ -1399,24 +1500,25 @@ void Application::Resize()
 
         CreateImage(m_DepthImage, info);
     }
-
-    m_ScCaps = GetScCaps();
-    CreateSwapchain();
-
+    
     // Attachments
     {
         ImageInfo info{};
         info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-        info.width = m_ScCaps.extent.width;
-        info.height = m_ScCaps.extent.height;
+        info.width = width;
+        info.height = height;
         info.gpuResource = false;
         info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
         info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         info.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-
+        
         CreateImage(m_PositionAttachment, info);
         CreateImage(m_NormalsAttachment, info);
     }
+    
+    m_ScCaps = GetScCaps();
+    CreateSwapchain();
+
     // GBuffer layout
     {
         VkDescriptorSetLayoutBinding bindings[2];
