@@ -450,7 +450,7 @@ Application::Application() : m_Width{800}, m_Height{600}
         }
     }
 
-    // Uniform resources
+    // Uniform resources & Attachments
     {
         // Light ssbo
         {
@@ -474,6 +474,21 @@ Application::Application() : m_Width{800}, m_Height{600}
 
             CreateBuffer(m_LightSsbo, info);
         }
+
+        // Attachments
+        {
+            ImageInfo info{};
+            info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+            info.width = m_ScCaps.extent.width;
+            info.height = m_ScCaps.extent.height;
+            info.gpuResource = false;
+            info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+            info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            info.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+
+            CreateImage(m_PositionAttachment, info);
+            CreateImage(m_NormalsAttachment, info);
+        }
     }
 
     // Descriptor Set Layouts
@@ -492,6 +507,27 @@ Application::Application() : m_Width{800}, m_Height{600}
             info.pBindings = &binding;
 
             VK_CHECK(vkCreateDescriptorSetLayout(m_Device, &info, nullptr, &m_LightSsboLayout));
+        }
+        // GBuffer layout
+        {
+            VkDescriptorSetLayoutBinding bindings[2];
+            // Position Attachment
+            bindings[0].binding = 0;
+            bindings[0].descriptorCount = 1;
+            bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            // Normal attachment
+            bindings[1].binding = 1;
+            bindings[1].descriptorCount = 1;
+            bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            
+            VkDescriptorSetLayoutCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            info.bindingCount = sizeof(bindings)/sizeof(bindings[0]);
+            info.pBindings = bindings;
+
+            VK_CHECK(vkCreateDescriptorSetLayout(m_Device, &info, nullptr, &m_GBufferLayout));
         }
     }
 
@@ -525,6 +561,48 @@ Application::Application() : m_Width{800}, m_Height{600}
             for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
                 write.dstSet = m_LightSsboSets[i];
                 vkUpdateDescriptorSets(m_Device, 1, &write, 0, nullptr);
+            }
+        }
+        // GBuffer set
+        {
+            // Creating the set
+            VkDescriptorSetAllocateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            info.descriptorPool = m_DescPool;
+            info.descriptorSetCount = 1;
+            info.pSetLayouts = &m_GBufferLayout;
+            
+            for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) 
+                VK_CHECK(vkAllocateDescriptorSets(m_Device, &info, &m_GBufferSets[i]));
+        
+            // Updating the set
+            VkDescriptorImageInfo imgInfos[2];
+            imgInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imgInfos[0].imageView = m_PositionAttachment.view;
+            imgInfos[0].sampler = nullptr;
+
+            imgInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imgInfos[1].imageView = m_NormalsAttachment.view;
+            imgInfos[1].sampler = nullptr;
+            for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+                VkWriteDescriptorSet writes[2];
+                memset(writes, 0, sizeof(VkWriteDescriptorSet) * sizeof(writes)/sizeof(writes[0]));
+                // Position attachment
+                writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[0].descriptorCount = 1;
+                writes[0].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                writes[0].dstBinding = 0;
+                writes[0].pImageInfo = &imgInfos[0];
+                writes[0].dstSet = m_GBufferSets[i];
+                // Normals attachment
+                writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[1].descriptorCount = 1;
+                writes[1].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                writes[1].dstBinding = 1;
+                writes[1].pImageInfo = &imgInfos[1];
+                writes[1].dstSet = m_GBufferSets[i];
+
+                vkUpdateDescriptorSets(m_Device, sizeof(writes)/sizeof(writes[0]), writes, 0, nullptr);
             }
         }
     }
@@ -578,6 +656,10 @@ Application::~Application()
     for(auto& mesh : m_Model)
         mesh.Destroy();
     DestroyPipeline(m_Pipeline);
+
+    DestroyImage(m_PositionAttachment);
+    DestroyImage(m_NormalsAttachment);
+    vkDestroyDescriptorSetLayout(m_Device, m_GBufferLayout, nullptr);
 
     DestroyBuffer(m_LightSsbo);
     vkDestroyDescriptorSetLayout(m_Device, m_LightSsboLayout, nullptr);
@@ -1290,7 +1372,15 @@ void Application::Resize()
 
     VkFormat depthFormat = m_DepthImage.info.format;
     DestroyImage(m_DepthImage);
+    DestroyImage(m_PositionAttachment);
+    DestroyImage(m_NormalsAttachment);
+    
+    vkDestroyDescriptorSetLayout(m_Device, m_GBufferLayout, nullptr);
+    for(auto& set : m_GBufferSets)
+        VK_CHECK(vkFreeDescriptorSets(m_Device, m_DescPool, 1, &set));
+
     vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+    
     m_ScImages.clear();
     m_ScImageViews.clear();
     m_Framebuffers.clear();
@@ -1312,6 +1402,85 @@ void Application::Resize()
 
     m_ScCaps = GetScCaps();
     CreateSwapchain();
+
+    // Attachments
+    {
+        ImageInfo info{};
+        info.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+        info.width = m_ScCaps.extent.width;
+        info.height = m_ScCaps.extent.height;
+        info.gpuResource = false;
+        info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        info.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+
+        CreateImage(m_PositionAttachment, info);
+        CreateImage(m_NormalsAttachment, info);
+    }
+    // GBuffer layout
+    {
+        VkDescriptorSetLayoutBinding bindings[2];
+        // Position Attachment
+        bindings[0].binding = 0;
+        bindings[0].descriptorCount = 1;
+        bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        // Normal attachment
+        bindings[1].binding = 1;
+        bindings[1].descriptorCount = 1;
+        bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        
+        VkDescriptorSetLayoutCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        info.bindingCount = sizeof(bindings)/sizeof(bindings[0]);
+        info.pBindings = bindings;
+
+        VK_CHECK(vkCreateDescriptorSetLayout(m_Device, &info, nullptr, &m_GBufferLayout));
+    }
+    // GBuffer set
+    {
+        // Creating the set
+        VkDescriptorSetAllocateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        info.descriptorPool = m_DescPool;
+        info.descriptorSetCount = 1;
+        info.pSetLayouts = &m_GBufferLayout;
+        
+        for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) 
+            VK_CHECK(vkAllocateDescriptorSets(m_Device, &info, &m_GBufferSets[i]));
+    
+        // Updating the set
+        for(u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+            VkDescriptorImageInfo imgInfos[2];
+            imgInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imgInfos[0].imageView = m_PositionAttachment.view;
+            imgInfos[0].sampler = nullptr;
+
+            imgInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imgInfos[1].imageView = m_NormalsAttachment.view;
+            imgInfos[1].sampler = nullptr;
+
+            VkWriteDescriptorSet writes[2];
+            memset(writes, 0, sizeof(VkWriteDescriptorSet) * sizeof(writes)/sizeof(writes[0]));
+            // Position attachment
+            writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[0].descriptorCount = 1;
+            writes[0].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            writes[0].dstBinding = 0;
+            writes[0].pImageInfo = &imgInfos[0];
+            writes[0].dstSet = m_GBufferSets[i];
+            // Normals attachment
+            writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[1].descriptorCount = 1;
+            writes[1].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            writes[1].dstBinding = 1;
+            writes[1].pImageInfo = &imgInfos[1];
+            writes[1].dstSet = m_GBufferSets[i];
+
+            vkUpdateDescriptorSets(m_Device, sizeof(writes)/sizeof(writes[0]), writes, 0, nullptr);
+        }
+    }
 
     VkSemaphoreCreateInfo semaInfo{};
     semaInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;

@@ -228,6 +228,11 @@ private:
     std::vector<VkSemaphore> m_RenderFinished;
     VkDescriptorPool m_DescPool = nullptr;
 
+    VkDescriptorSetLayout m_GBufferLayout = nullptr;
+    VkDescriptorSet m_GBufferSets[FRAMES_IN_FLIGHT];
+    Image m_PositionAttachment{};
+    Image m_NormalsAttachment{};
+
     VkDescriptorSetLayout m_LightSsboLayout = nullptr;
     VkDescriptorSet m_LightSsboSets[FRAMES_IN_FLIGHT];
     Buffer m_LightSsbo{};
