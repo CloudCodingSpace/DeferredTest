@@ -61,6 +61,15 @@ Application::Application() : m_Width{800}, m_Height{600}
 
         for(auto& device : devices)
         {
+            VkPhysicalDeviceScalarBlockLayoutFeatures scalarFeatures{};
+            scalarFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
+
+            VkPhysicalDeviceFeatures2 features2{};
+            features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            features2.pNext = &scalarFeatures;
+
+            vkGetPhysicalDeviceFeatures2(device, &features2);
+
             u32 queueCount = 0;
             vkGetPhysicalDeviceQueueFamilyProperties(device, &queueCount, nullptr);
             std::vector<VkQueueFamilyProperties> queueProps(queueCount);
@@ -77,7 +86,7 @@ Application::Application() : m_Width{800}, m_Height{600}
                 if(present)
                     pIdx = i;
                 
-                if(present && (gIdx != -1) && (pIdx != -1) && (cIdx != -1)) {
+                if(present && (gIdx != -1) && (pIdx != -1) && (cIdx != -1) && scalarFeatures.scalarBlockLayout) {
                     m_PhysicalDevice = device;
                     m_GraphicsQueueIdx = gIdx;
                     m_PresentQueueIdx = pIdx;
@@ -146,13 +155,22 @@ Application::Application() : m_Width{800}, m_Height{600}
             queueInfos.push_back(info);
         }
 
+        VkPhysicalDeviceScalarBlockLayoutFeatures scalarFeatures{};
+        scalarFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
+        scalarFeatures.scalarBlockLayout = VK_TRUE;
+
+        VkPhysicalDeviceFeatures2 features2{};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.features = m_PhysicalDeviceFeatures;
+        features2.pNext = &scalarFeatures;
+
         VkDeviceCreateInfo info = {
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+            .pNext = &features2,
             .queueCreateInfoCount = (u32)queueInfos.size(),
             .pQueueCreateInfos = queueInfos.data(),
             .enabledExtensionCount = (u32)exts.size(),
-            .ppEnabledExtensionNames = exts.data(),
-            .pEnabledFeatures = &m_PhysicalDeviceFeatures
+            .ppEnabledExtensionNames = exts.data()
         };
 
         VK_CHECK(vkCreateDevice(m_PhysicalDevice, &info, nullptr, &m_Device));
@@ -336,7 +354,7 @@ Application::Application() : m_Width{800}, m_Height{600}
         
         ImGui_ImplVulkan_InitInfo info{};
         info.Allocator = nullptr;
-        info.ApiVersion = VK_API_VERSION_1_0;
+        info.ApiVersion = VK_API_VERSION_1_2;
         info.DescriptorPool = m_UiDescPool;
         info.Device = m_Device;
         info.ImageCount = FRAMES_IN_FLIGHT;
