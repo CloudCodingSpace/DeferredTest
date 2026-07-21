@@ -6,10 +6,16 @@ The code isn't going to be very clean and may not be very readable and ideal, bu
 anybody doesn't use this code for production but is of course free to use for inspiration :)
 
 This project loads .gltf (single meshed models only to keep things simple) and renders it. For using the camera, 
-hold right mouse button to move the camera and for movement :-
-    - W = Forward
-    - A = Left
-    - S = Back
-    - D = Right
-    - Left Shift = Down
-    - Space = Up
+hold right mouse button to move the camera and for movement :-  
+- W = Forward
+- A = Left
+- S = Back
+- D = Right
+- Left Shift = Down
+- Space = Up
+
+
+As of now, the project is almost finished, since the basic deferred pipeline has been set up. Only finishing stuffs like albedo textures and specular lighting are left.
+
+Screenshots:
+ - ![img](./img0.png)

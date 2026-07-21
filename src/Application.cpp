@@ -250,12 +250,12 @@ Application::Application() : m_Width{800}, m_Height{600}
                 { 1.0f, 1.0f, 1.0f }
             };
 
-            constexpr u32 lightCount = 200;
+            constexpr u32 lightCount = 100;
             std::random_device device;
             std::mt19937 rng(device());
-            std::uniform_real_distribution<float> posDist(-12, 12);
+            std::uniform_real_distribution<float> posDist(-5, 5);
             std::uniform_int_distribution colorDist(0, 5);
-            std::uniform_real_distribution<float> instensityDist(0.1, 1);
+            std::uniform_real_distribution<float> instensityDist(0.1, 0.6);
             
             struct {
                 int count;
