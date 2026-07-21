@@ -35,7 +35,7 @@ void main() {
         float attenuation = 1 / dot(L, L);
 
         float NdotL = max(dot(normalize(normal), L), 0.0);
-        totalLight += light.color * NdotL * attenuation;
+        totalLight += light.color * NdotL * attenuation * 0.1;
     }
 
     FragColor.rgb = vec3(totalLight + ambient);

@@ -5,6 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <vector>
+#include <random>
 
 #include <cgltf/cgltf.h>
 
@@ -241,17 +242,22 @@ Application::Application() : m_Width{800}, m_Height{600}
     {
         // Light ssbo
         {
-            constexpr int lightCount = 1;
-
+            constexpr u32 lightCount = 10;
+            std::random_device device;
+            std::mt19937 rng(device());
+            std::uniform_real_distribution<float> posDist(-5, 5);
+            std::uniform_real_distribution<float> colorDist(0.1, 1);
+            
             struct {
                 int count;
                 Light lights[lightCount];
             } lightData;
 
             lightData.count = lightCount;
-            // Only 1 light as of now
-            lightData.lights[0].pos = glm::vec3(0.0f, 3.0f, 3.0f);
-            lightData.lights[0].color = glm::vec3(1.0f, 1.0f, 1.0f);
+            for(u32 i = 0; i < lightCount; i++) {
+                lightData.lights[i].pos = glm::vec3(posDist(rng), posDist(rng), posDist(rng));
+                lightData.lights[i].color = glm::vec3(colorDist(rng), colorDist(rng), colorDist(rng));
+            }
 
             BufferInfo info{};
             info.size = sizeof(lightData);
