@@ -10,6 +10,7 @@ layout (location = 0) out vec4 FragColor;
 struct Light {
     vec3 pos;
     vec3 color;
+    float intensity;
 };
 
 layout (set = 0, binding = 0, scalar) buffer LightSSBO {
@@ -31,11 +32,12 @@ void main() {
 
     for(uint i = 0; i < lightSsbo.count; i++) {
         Light light = lightSsbo.lights[i];
-        vec3 L = normalize(FragPos + light.pos);
+        vec3 L = light.pos - FragPos;
         float attenuation = 1 / dot(L, L);
+        L = -normalize(L);
 
         float NdotL = max(dot(normalize(normal), L), 0.0);
-        totalLight += light.color * NdotL * attenuation * 0.1;
+        totalLight += light.color * NdotL * attenuation * light.intensity;
     }
 
     FragColor.rgb = vec3(totalLight + ambient);

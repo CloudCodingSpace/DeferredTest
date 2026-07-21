@@ -242,11 +242,20 @@ Application::Application() : m_Width{800}, m_Height{600}
     {
         // Light ssbo
         {
-            constexpr u32 lightCount = 10;
+            glm::vec3 colorSet[5] = {
+                { 1.0f, 0.0f, 0.0f },
+                { 0.0f, 1.0f, 0.0f },
+                { 0.0f, 0.0f, 1.0f },
+                { 1.0f, 1.0f, 0.0f },
+                { 1.0f, 1.0f, 1.0f }
+            };
+
+            constexpr u32 lightCount = 200;
             std::random_device device;
             std::mt19937 rng(device());
-            std::uniform_real_distribution<float> posDist(-5, 5);
-            std::uniform_real_distribution<float> colorDist(0.1, 1);
+            std::uniform_real_distribution<float> posDist(-12, 12);
+            std::uniform_int_distribution colorDist(0, 5);
+            std::uniform_real_distribution<float> instensityDist(0.1, 1);
             
             struct {
                 int count;
@@ -256,7 +265,8 @@ Application::Application() : m_Width{800}, m_Height{600}
             lightData.count = lightCount;
             for(u32 i = 0; i < lightCount; i++) {
                 lightData.lights[i].pos = glm::vec3(posDist(rng), posDist(rng), posDist(rng));
-                lightData.lights[i].color = glm::vec3(colorDist(rng), colorDist(rng), colorDist(rng));
+                lightData.lights[i].color = colorSet[colorDist(rng)];
+                lightData.lights[i].intensity = instensityDist(rng);
             }
 
             BufferInfo info{};
@@ -1496,8 +1506,8 @@ void Application::Resize()
     // Depth image
     {
         ImageInfo info{};
-        info.width = m_Width;
-        info.height = m_Height;
+        info.width = width;
+        info.height = height;
         info.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
         info.gpuResource = false;
         info.memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
